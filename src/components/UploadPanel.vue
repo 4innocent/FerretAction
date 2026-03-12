@@ -72,17 +72,23 @@ function formatSize(bytes: number) {
 </script>
 
 <template>
-  <section class="flex flex-col h-full">
-    <h2
-      class="text-sm font-semibold tracking-wide text-slate-500 uppercase mb-3"
-    >
+  <section flex="~ col" h="full">
+    <h2 text="sm slate-500" font="semibold" tracking="wide" uppercase m="b-3">
       局部截图
     </h2>
 
     <!-- 上传区域 -->
     <div
       v-if="!uploadedImage"
-      class="flex-1 flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed transition cursor-pointer select-none"
+      flex="1 ~ col"
+      items="center"
+      justify="center"
+      gap="3"
+      rounded="xl"
+      border="2 dashed"
+      transition="~"
+      cursor="pointer"
+      select="none"
       :class="
         isDragOver
           ? 'border-blue-400 bg-blue-50'
@@ -93,26 +99,36 @@ function formatSize(bytes: number) {
       @dragleave="isDragOver = false"
       @drop.prevent="handleDrop"
     >
-      <div class="text-3xl text-slate-300">&#128444;</div>
-      <p class="text-sm text-slate-500">点击或拖拽上传局部截图</p>
-      <p class="text-xs text-slate-400">支持 PNG / JPG / WebP / BMP</p>
+      <div text="3xl slate-300">&#128444;</div>
+      <p text="sm slate-500">点击或拖拽上传局部截图</p>
+      <p text="xs slate-400">支持 PNG / JPG / WebP / BMP</p>
     </div>
 
     <!-- 预览区域 -->
-    <div v-else class="flex-1 flex flex-col gap-3 min-h-0">
+    <div v-else flex="1 ~ col" gap="3" min-h="0">
       <div
-        class="flex-1 relative rounded-xl overflow-hidden bg-slate-50 border border-slate-200 min-h-0 flex items-center justify-center"
+        flex="1 ~"
+        items="center"
+        justify="center"
+        relative
+        rounded="xl"
+        overflow="hidden"
+        bg="slate-50"
+        border="~ slate-200"
+        min-h="0"
       >
         <img
           :src="uploadedImage.dataUrl"
           :alt="uploadedImage.name"
-          class="max-w-full max-h-full object-contain"
+          max-w="full"
+          max-h="full"
+          object="contain"
         />
       </div>
 
       <!-- 图片信息 -->
-      <div class="text-xs text-slate-500 space-y-0.5">
-        <p class="truncate" :title="uploadedImage.name">
+      <div text="xs slate-500" space="y-0.5">
+        <p truncate :title="uploadedImage.name">
           {{ uploadedImage.name }}
         </p>
         <p>
@@ -122,15 +138,28 @@ function formatSize(bytes: number) {
       </div>
 
       <!-- 操作按钮 -->
-      <div class="flex gap-2">
+      <div flex="~" gap="2">
         <button
-          class="flex-1 rounded-lg py-1.5 text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 transition"
+          flex="1"
+          rounded="lg"
+          p="y-1.5"
+          text="xs slate-700"
+          font="medium"
+          bg="slate-100 hover:slate-200"
+          border="~ slate-200"
+          transition="~"
           @click="openFilePicker"
         >
           替换图片
         </button>
         <button
-          class="flex-1 rounded-lg py-1.5 text-xs font-medium bg-red-50 text-red-500 hover:bg-red-100 transition"
+          flex="1"
+          rounded="lg"
+          p="y-1.5"
+          text="xs red-500"
+          font="medium"
+          bg="red-50 hover:red-100"
+          transition="~"
           @click="removeUploadedImage"
         >
           删除
@@ -142,7 +171,7 @@ function formatSize(bytes: number) {
       ref="fileInput"
       type="file"
       accept="image/png,image/jpeg,image/webp,image/bmp"
-      class="hidden"
+      hidden
       @change="handleFileChange"
     />
   </section>

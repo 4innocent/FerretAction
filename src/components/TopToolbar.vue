@@ -14,15 +14,28 @@ const {
 
 <template>
   <header
-    class="flex items-center justify-between px-6 py-3 bg-white border-b border-slate-200 shadow-sm"
+    flex="~"
+    items="center"
+    justify="between"
+    p="x-6 y-3"
+    bg="white"
+    border="b slate-200"
+    shadow="sm"
   >
     <!-- 左侧：标题 + 状态 -->
-    <div class="flex items-center gap-4">
-      <h1 class="text-base font-bold tracking-wide text-slate-800">
+    <div flex="~" items="center" gap="4">
+      <h1 text="base slate-800" font="bold" tracking="wide">
         局部截图位置识别 · 测试台
       </h1>
       <span
-        class="inline-flex items-center gap-1.5 rounded-full px-3 py-0.5 text-xs font-semibold border"
+        inline-flex="~"
+        items="center"
+        gap="1.5"
+        rounded="full"
+        p="x-3 y-0.5"
+        text="xs"
+        font="semibold"
+        border="~"
         :class="{
           'bg-slate-50 text-slate-400 border-slate-200': status === 'idle',
           'bg-blue-50 text-blue-600 border-blue-200': status === 'ready',
@@ -35,7 +48,9 @@ const {
         }"
       >
         <span
-          class="h-1.5 w-1.5 rounded-full"
+          h="1.5"
+          w="1.5"
+          rounded="full"
           :class="{
             'bg-slate-300': status === 'idle',
             'bg-blue-500': status === 'ready',
@@ -50,9 +65,13 @@ const {
     </div>
 
     <!-- 右侧：操作按钮 -->
-    <div class="flex items-center gap-2">
+    <div flex="~" items="center" gap="2">
       <button
-        class="rounded-lg px-4 py-1.5 text-sm font-medium transition"
+        rounded="lg"
+        p="x-4 y-1.5"
+        text="sm"
+        font="medium"
+        transition="~"
         :class="
           canStartRecognition
             ? 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 shadow-sm'
@@ -65,7 +84,12 @@ const {
       </button>
 
       <button
-        class="rounded-lg px-4 py-1.5 text-sm font-medium transition border"
+        rounded="lg"
+        p="x-4 y-1.5"
+        text="sm"
+        font="medium"
+        transition="~"
+        border="~"
         :class="
           result
             ? 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
@@ -78,7 +102,13 @@ const {
       </button>
 
       <button
-        class="rounded-lg px-4 py-1.5 text-sm font-medium bg-white text-slate-600 border border-slate-300 hover:bg-slate-50 transition"
+        rounded="lg"
+        p="x-4 y-1.5"
+        text="sm slate-600"
+        font="medium"
+        bg="white hover:slate-50"
+        border="~ slate-300"
+        transition="~"
         :disabled="status === 'running'"
         @click="clearAll"
       >

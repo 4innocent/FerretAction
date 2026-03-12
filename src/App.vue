@@ -7,23 +7,42 @@ import LogPanel from "./components/LogPanel.vue";
 
 <template>
   <div
-    class="h-screen w-screen flex flex-col bg-slate-100 font-sans text-slate-800 overflow-hidden"
+    h="screen"
+    w="screen"
+    flex="~ col"
+    bg="slate-100"
+    font="sans"
+    text="slate-800"
+    overflow="hidden"
   >
     <!-- A. 顶部工具区 -->
     <TopToolbar />
 
     <!-- B + C 主体区域：左右分栏 -->
-    <main class="flex-1 flex min-h-0 p-4 gap-4">
+    <main flex="1 ~" min-h="0" p="4" gap="4">
       <!-- B. 左侧上传区 -->
       <aside
-        class="w-72 shrink-0 flex flex-col rounded-xl border border-slate-200 bg-white shadow-sm p-4"
+        w="72"
+        shrink="0"
+        flex="~ col"
+        rounded="xl"
+        border="~ slate-200"
+        bg="white"
+        shadow="sm"
+        p="4"
       >
         <UploadPanel />
       </aside>
 
       <!-- C. 右侧结果展示区 -->
       <section
-        class="flex-1 flex flex-col rounded-xl border border-slate-200 bg-white shadow-sm p-4 min-w-0"
+        flex="1 ~ col"
+        rounded="xl"
+        border="~ slate-200"
+        bg="white"
+        shadow="sm"
+        p="4"
+        min-w="0"
       >
         <ResultPanel />
       </section>
@@ -31,7 +50,14 @@ import LogPanel from "./components/LogPanel.vue";
 
     <!-- D. 底部日志区 -->
     <footer
-      class="h-40 shrink-0 mx-4 mb-4 rounded-xl border border-slate-200 bg-slate-800 shadow-sm p-4"
+      h="40"
+      shrink="0"
+      m="x-4 b-4"
+      rounded="xl"
+      border="~ slate-200"
+      bg="slate-800"
+      shadow="sm"
+      p="4"
     >
       <LogPanel />
     </footer>

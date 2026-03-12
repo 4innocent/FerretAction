@@ -24,23 +24,27 @@ const typeClass: Record<string, string> = {
 </script>
 
 <template>
-  <section class="flex flex-col h-full">
-    <h2
-      class="text-sm font-semibold tracking-wide text-slate-400 uppercase mb-2"
-    >
+  <section flex="~ col" h="full">
+    <h2 text="sm slate-400" font="semibold" tracking="wide" uppercase m="b-2">
       操作日志
     </h2>
     <div
       ref="scrollEl"
-      class="flex-1 overflow-y-auto font-mono text-xs leading-relaxed space-y-0.5 min-h-0"
+      flex="1"
+      overflow="y-auto"
+      font="mono"
+      text="xs"
+      leading="relaxed"
+      space="y-0.5"
+      min-h="0"
     >
-      <p v-if="logs.length === 0" class="text-slate-500 italic">暂无记录</p>
+      <p v-if="logs.length === 0" text="slate-500" italic>暂无记录</p>
       <p
         v-for="log in logs"
         :key="log.id"
-        :class="typeClass[log.type] ?? 'text-ink-400'"
+        :class="typeClass[log.type] ?? 'text-slate-400'"
       >
-        <span class="text-slate-500 mr-2 select-none">[{{ log.time }}]</span>
+        <span text="slate-500" m="r-2" select="none">[{{ log.time }}]</span>
         {{ log.message }}
       </p>
     </div>
