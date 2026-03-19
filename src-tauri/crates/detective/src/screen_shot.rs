@@ -1,4 +1,3 @@
-use std::fs;
 use xcap::Monitor;
 
 pub fn take_screenshot() {
@@ -6,5 +5,8 @@ pub fn take_screenshot() {
 
     for monitor in monitors {
         let image = monitor.capture_image().expect("截图失败");
+        let height = image.height();
+        let width = image.width();
+        print!("{}x{}", width, height);
     }
 }
