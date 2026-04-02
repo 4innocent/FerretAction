@@ -11,6 +11,6 @@ path = "src/lib.rs"
 anyhow = "1"
 serde = { workspace = true }
 serde_json = { workspace = true }
-xcap = "0.9.1"
+xcap = { version = "0.9.1" }
 image = { workspace = true }
 opencv = { workspace = true }

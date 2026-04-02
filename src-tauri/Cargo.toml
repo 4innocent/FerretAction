@@ -30,6 +30,7 @@ opencv = { version = "0.98.1", default-features = false, features = [
     "imgproc",
     "features2d",
     "calib3d",
+    "highgui",
 ] }
 
 [dependencies]
