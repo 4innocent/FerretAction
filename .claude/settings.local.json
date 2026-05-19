@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo doc *)",
+      "Bash(cargo check *)",
+      "Bash(tasklist)",
+      "WebSearch",
+      "Bash(mkdir -p icons)",
+      "Bash(python -c \"from PIL import Image; print\\('PIL available'\\)\")",
+      "Bash(python3 -c \"from PIL import Image; print\\('PIL available'\\)\")",
+      "Bash(cargo test *)"
+    ]
+  }
+}

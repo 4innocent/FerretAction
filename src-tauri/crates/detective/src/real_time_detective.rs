@@ -1,7 +1,15 @@
+/// 实时检测循环 —— 持续捕获屏幕并以预设间隔运行目标检测管线。
+///
+/// 提供两种模式：
+/// - `run_realtime_detection`: 带 OpenCV 预览窗口，支持 ESC 提前退出。
+/// - `run_realtime_detection_headless`: 无窗口版本，适合自动化测试或后端服务。
+///
+/// 内部使用 ORB + 图像金字塔 + RANSAC 管线，并预留模板匹配回退。
 use anyhow::{anyhow, Context, Result};
+use log::{error, info};
 use opencv::{
-    core::{self, AlgorithmHint, Point},
-    highgui, imgcodecs, imgproc,
+    core::{AlgorithmHint, Point, Rect, Scalar},
+    highgui, imgproc,
     prelude::*,
 };
 use std::{
@@ -10,241 +18,220 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use xcap::{Frame, Monitor};
 
-const DETECT_DOWNSAMPLE_SCALE: f64 = 0.5;
+use crate::{
+    feature_matcher, pipeline, screen_capture,
+    types::{DetectionBox, DetectionConfig, OrbTemplate},
+};
 
-/// 单次模板命中的结构化结果。
+/// 实时检测入口（带 OpenCV 预览窗口）。
 ///
-/// 这个结构体既可以用于日志打印，也方便后续直接透传到上层（例如 Tauri 命令返回给前端）。
-#[derive(Debug, Clone)]
-pub struct DetectionBox {
-    /// 命中的模板文件名（例如 target_login.png）。
-    pub target_name: String,
-    /// 模板匹配置信度，取值范围通常在 [-1, 1]，越接近 1 代表越相似。
-    pub confidence: f32,
-    /// 命中框左上角 x（像素）。
-    pub x: i32,
-    /// 命中框左上角 y（像素）。
-    pub y: i32,
-    /// 命中框宽度（像素）。
-    pub width: i32,
-    /// 命中框高度（像素）。
-    pub height: i32,
-}
-
-#[derive(Debug)]
-struct TargetTemplate {
-    /// 模板文件名（用于日志与窗口文字标注）。
-    name: String,
-    /// 预加载的原始灰度模板图（用于记录原始尺寸）。
-    mat_gray: Mat,
-    /// 预加载的降采样灰度模板图（用于实际匹配，降低计算量）。
-    ///
-    /// 模板匹配使用灰度可以降低计算量，并且对色彩变化不敏感。
-    mat_gray_scaled: Mat,
-}
-
-/// 运行时性能统计（累加每帧耗时，结束后输出平均值）。
-#[derive(Debug, Default)]
-struct PerfStats {
-    frames: usize,
-    detect_runs: usize,
-    detect_skips: usize,
-    receive: Duration,
-    convert: Duration,
-    detect: Duration,
-    process: Duration,
-}
-
-impl PerfStats {
-    fn push_frame(
-        &mut self,
-        did_detect: bool,
-        receive: Duration,
-        convert: Duration,
-        detect: Duration,
-        process: Duration,
-    ) {
-        self.frames += 1;
-        if did_detect {
-            self.detect_runs += 1;
-        } else {
-            self.detect_skips += 1;
-        }
-        self.receive += receive;
-        self.convert += convert;
-        self.detect += detect;
-        self.process += process;
-    }
-
-    fn print_summary(&self, interval_ms: u64) {
-        if self.frames == 0 {
-            println!("[perf summary] 没有可统计的帧");
-            return;
-        }
-
-        let f = self.frames as f64;
-        let avg_receive_ms = to_ms(self.receive) / f;
-        let avg_convert_ms = to_ms(self.convert) / f;
-        let avg_detect_ms = to_ms(self.detect) / f;
-        let avg_process_ms = to_ms(self.process) / f;
-
-        let process_fps = if avg_process_ms > 0.0 {
-            1000.0 / avg_process_ms
-        } else {
-            f64::INFINITY
-        };
-
-        println!(
-            "[perf summary] frames={} detect_runs={} detect_skips={} interval={}ms avg_receive={:.2}ms avg_convert={:.2}ms avg_detect={:.2}ms avg_process={:.2}ms process_fps={:.2}",
-            self.frames,
-            self.detect_runs,
-            self.detect_skips,
-            interval_ms,
-            avg_receive_ms,
-            avg_convert_ms,
-            avg_detect_ms,
-            avg_process_ms,
-            process_fps,
-        );
-    }
-}
-
-/// 实时检测入口：
-/// - 每 `interval_ms` 毫秒抓屏一次
-/// - 在 static 中加载所有 target* 模板
-/// - 在匹配到的位置绘制红框并实时展示
-/// - 同时落盘最新标注图与原图，方便排查
+/// # 参数
+/// - `interval_ms`: 两次检测之间的最小间隔（毫秒）
+/// - `max_frames`: 最大处理帧数
 pub fn run_realtime_detection(interval_ms: u64, max_frames: usize) -> Result<()> {
-    run_realtime_detection_inner(interval_ms, max_frames, true)
+    run_inner(interval_ms, max_frames, true)
 }
 
-/// 不弹窗版本，适合自动化测试或无界面环境。
+/// 实时检测入口（无窗口，适合自动化测试）。
 pub fn run_realtime_detection_headless(interval_ms: u64, max_frames: usize) -> Result<()> {
-    run_realtime_detection_inner(interval_ms, max_frames, false)
+    run_inner(interval_ms, max_frames, false)
 }
 
-fn run_realtime_detection_inner(
-    interval_ms: u64,
-    max_frames: usize,
-    show_window: bool,
-) -> Result<()> {
-    // 保护性检查：防止调用方误传 0 帧导致函数“看似执行但没有任何输出”。
+fn run_inner(interval_ms: u64, max_frames: usize, show_window: bool) -> Result<()> {
     if max_frames == 0 {
         return Err(anyhow!("max_frames 必须大于 0"));
     }
 
-    // 1) 定位 static 目录并加载模板。
-    // 2) 选择主显示器作为录制来源。
+    // 1) 离线阶段：定位 static 目录，加载全部模板并预提取 ORB 特征。
     let static_dir = locate_static_dir().context("无法定位 static 目录")?;
-    let targets = load_target_templates(&static_dir)?;
-    let monitor = choose_primary_monitor()?;
-
-    let (recorder, rx) = monitor.video_recorder().context("创建屏幕录制器失败")?;
-    recorder.start().context("启动屏幕录制失败")?;
-
-    let worker = thread::spawn(move || {
-        run_detection_worker(rx, targets, interval_ms, max_frames, show_window)
-    });
-
-    let worker_result = worker.join().map_err(|_| anyhow!("检测线程 panic"))?;
-
-    // 先尝试停止录制，再返回检测结果，避免采集会话泄漏。
-    recorder.stop().context("停止屏幕录制失败")?;
-
-    worker_result
-}
-
-fn run_detection_worker(
-    rx: std::sync::mpsc::Receiver<Frame>,
-    targets: Vec<TargetTemplate>,
-    interval_ms: u64,
-    max_frames: usize,
-    show_window: bool,
-) -> Result<()> {
-    let mut perf = PerfStats::default();
-    let detect_interval = Duration::from_millis(interval_ms);
-    let mut last_detect_at: Option<Instant> = None;
+    let loaded = load_templates(&static_dir).context("加载模板失败")?;
 
     if show_window {
         highgui::named_window("FerretAction Realtime Detect", highgui::WINDOW_NORMAL)
             .context("创建实时预览窗口失败")?;
     }
 
+    let config = DetectionConfig::default();
+    let detect_interval = Duration::from_millis(interval_ms);
+    let mut last_detect_at: Option<Instant> = None;
+    let mut perf = PerfStats::default();
+
+    // 持久化捕获器，避免每帧重建 DXGI 管理器。
+    let mut cap = match screen_capture::ScreenCapture::new() {
+        Ok(c) => c,
+        Err(e) => return Err(anyhow!("创建屏幕捕获器失败: {e:#}")),
+    };
+
+    // 跨帧持久的检测结果 —— 当屏幕无变化时复用上一帧的结果。
+    let mut detections: Vec<DetectionBox> = Vec::new();
+
     for frame_idx in 0..max_frames {
-        let process_start = Instant::now();
+        let frame_start = Instant::now();
 
-        let receive_start = Instant::now();
-        let frame = rx
-            .recv_timeout(Duration::from_secs(3))
-            .context("等待录制帧超时")?;
-        let receive_elapsed = receive_start.elapsed();
+        // 2) 捕获当前屏幕画面及帧元数据（脏矩形）。
+        let capture_start = Instant::now();
+        let (sw, sh, screen_buf, frame_meta) = match cap.capture_with_metadata() {
+            Ok(cap) => cap,
+            Err(e) => {
+                error!("[frame={}] 屏幕捕获失败: {e:#}", frame_idx + 1);
+                continue;
+            }
+        };
+        let capture_elapsed = capture_start.elapsed();
+        let has_screen_updates = frame_meta.has_updates();
 
+        // 3) 将 BGRA 缓冲转为 BGR Mat（用于显示）。
         let convert_start = Instant::now();
-        let frame_bgr = frame_to_bgr_mat(frame)?;
+        let mut display_mat = match bgra_to_bgr_mat(&screen_buf, sw, sh) {
+            Ok(mat) => mat,
+            Err(e) => {
+                error!("[frame={}] BGRA 转 BGR 失败: {e:#}", frame_idx + 1);
+                continue;
+            }
+        };
         let convert_elapsed = convert_start.elapsed();
 
+        // 4) 按间隔且仅在屏幕有更新时执行检测。
         let detect_start = Instant::now();
         let now = Instant::now();
-        let should_detect = match last_detect_at {
+        let interval_ok = match last_detect_at {
             None => true,
             Some(last) => now.duration_since(last) >= detect_interval,
         };
+        let should_detect = interval_ok && has_screen_updates;
 
-        let detections = if should_detect {
-            let detected =
-                detect_targets_scaled(&targets, &frame_bgr, 0.80, DETECT_DOWNSAMPLE_SCALE)?;
+        if should_detect {
+            let detect_start_inner = Instant::now();
+            let mut new_detections = Vec::new();
+            for (template_gray, orb_template) in &loaded.templates {
+                let mut orb = match feature_matcher::create_orb(&config) {
+                    Ok(o) => o,
+                    Err(_) => continue,
+                };
+
+                match pipeline::detect(
+                    &screen_buf,
+                    sw,
+                    sh,
+                    template_gray,
+                    orb_template.as_ref(),
+                    &mut orb,
+                    &config,
+                ) {
+                    Ok(Some(result)) => {
+                        let name = orb_template
+                            .as_ref()
+                            .map(|t| t.name.clone())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        new_detections.push(DetectionBox {
+                            target_name: name,
+                            confidence: result.confidence as f32,
+                            x: result.x,
+                            y: result.y,
+                            width: result.width,
+                            height: result.height,
+                        });
+                    }
+                    Ok(None) => {} // 未找到，正常情况。
+                    Err(e) => {
+                        let name = orb_template
+                            .as_ref()
+                            .map(|t| t.name.as_str())
+                            .unwrap_or("unknown");
+                        error!(
+                            "[frame={}] 模板 {} 检测失败: {e:#}",
+                            frame_idx + 1,
+                            name
+                        );
+                    }
+                }
+            }
+            detections = new_detections;
             last_detect_at = Some(now);
-            detected
-        } else {
-            Vec::new()
-        };
+            let _detect_inner_elapsed = detect_start_inner.elapsed();
+        }
         let detect_elapsed = detect_start.elapsed();
 
-        println!(
-            "[frame={}] detect_run={} detections={}",
+        // 5) 日志输出。
+        info!(
+            "[frame={}] detect_run={} screen_updated={} detections={}",
             frame_idx + 1,
             should_detect,
+            has_screen_updates,
             detections.len()
         );
         for d in &detections {
-            println!(
+            info!(
                 "  - {} conf={:.3} rect=({}, {}, {}, {})",
                 d.target_name, d.confidence, d.x, d.y, d.width, d.height
             );
         }
 
+        // 6) 在显示画面绘制检测框。
+        for d in &detections {
+            imgproc::rectangle(
+                &mut display_mat,
+                Rect::new(d.x, d.y, d.width, d.height),
+                Scalar::new(0.0, 0.0, 255.0, 0.0),
+                2,
+                imgproc::LINE_AA,
+                0,
+            )?;
+            // 绘制模板名称标签。
+            imgproc::put_text(
+                &mut display_mat,
+                &format!("{}: {:.2}", d.target_name, d.confidence),
+                Point::new(d.x, (d.y - 5).max(5)),
+                imgproc::FONT_HERSHEY_SIMPLEX,
+                0.6,
+                Scalar::new(0.0, 255.0, 0.0, 0.0),
+                2,
+                imgproc::LINE_AA,
+                false,
+            )?;
+        }
+
+        // 7) 显示预览窗口。
         if show_window {
-            highgui::imshow("FerretAction Realtime Detect", &frame_bgr)
+            highgui::imshow("FerretAction Realtime Detect", &display_mat)
                 .context("刷新实时预览窗口失败")?;
             let key = highgui::wait_key(1).context("轮询键盘事件失败")?;
             if key == 27 {
-                println!("收到 ESC，提前结束实时检测");
+                // ESC
+                info!("收到 ESC，提前结束实时检测");
                 break;
             }
         }
 
-        let process_elapsed = process_start.elapsed();
-        println!(
-            "[perf frame={}] receive={:.2}ms convert={:.2}ms detect={:.2}ms process={:.2}ms",
+        let frame_elapsed = frame_start.elapsed();
+        info!(
+            "[perf frame={}] capture={:.2}ms convert={:.2}ms detect={:.2}ms total={:.2}ms",
             frame_idx + 1,
-            to_ms(receive_elapsed),
+            to_ms(capture_elapsed),
             to_ms(convert_elapsed),
             to_ms(detect_elapsed),
-            to_ms(process_elapsed),
+            to_ms(frame_elapsed),
         );
 
         perf.push_frame(
             should_detect,
-            receive_elapsed,
+            capture_elapsed,
             convert_elapsed,
             detect_elapsed,
-            process_elapsed,
+            frame_elapsed,
         );
+
+        // 帧率控制（如果处理过快，休眠至满足间隔）。
+        if let Some(elapsed) = Instant::now().checked_duration_since(frame_start) {
+            if elapsed < detect_interval {
+                thread::sleep(detect_interval - elapsed);
+            }
+        }
     }
 
     perf.print_summary(interval_ms);
+
     if show_window {
         highgui::destroy_window("FerretAction Realtime Detect").context("关闭实时预览窗口失败")?;
     }
@@ -252,105 +239,18 @@ fn run_detection_worker(
     Ok(())
 }
 
-fn detect_targets_scaled(
-    targets: &[TargetTemplate],
-    frame_bgr: &Mat,
-    threshold: f32,
-    scale: f64,
-) -> Result<Vec<DetectionBox>> {
-    if !(0.0 < scale && scale <= 1.0) {
-        return Err(anyhow!("scale 必须在 (0, 1] 范围内"));
-    }
+// ─── 内部辅助 ────────────────────────────────────────────────
 
-    let mut frame_gray = Mat::default();
-    imgproc::cvt_color(
-        frame_bgr,
-        &mut frame_gray,
-        imgproc::COLOR_BGR2GRAY,
-        0,
-        AlgorithmHint::ALGO_HINT_DEFAULT,
-    )?;
-
-    // 将截图降采样后进行模板匹配，再把坐标映射回原图，确保绘制位置准确。
-    let mut frame_gray_scaled = Mat::default();
-    imgproc::resize(
-        &frame_gray,
-        &mut frame_gray_scaled,
-        core::Size::new(0, 0),
-        scale,
-        scale,
-        imgproc::INTER_AREA,
-    )?;
-
-    let mut detections = Vec::new();
-
-    for target in targets {
-        let t_scaled = &target.mat_gray_scaled;
-        let t_cols = t_scaled.cols();
-        let t_rows = t_scaled.rows();
-        if t_cols <= 0 || t_rows <= 0 {
-            continue;
-        }
-
-        let result_cols = frame_gray_scaled.cols() - t_cols + 1;
-        let result_rows = frame_gray_scaled.rows() - t_rows + 1;
-        if result_cols <= 0 || result_rows <= 0 {
-            continue;
-        }
-
-        let mut result = Mat::zeros(result_rows, result_cols, core::CV_32FC1)?.to_mat()?;
-        imgproc::match_template(
-            &frame_gray_scaled,
-            t_scaled,
-            &mut result,
-            imgproc::TM_CCOEFF_NORMED,
-            &Mat::default(),
-        )?;
-
-        let mut min_val = 0.0;
-        let mut max_val = 0.0;
-        let mut min_loc = Point::new(0, 0);
-        let mut max_loc = Point::new(0, 0);
-        core::min_max_loc(
-            &result,
-            Some(&mut min_val),
-            Some(&mut max_val),
-            Some(&mut min_loc),
-            Some(&mut max_loc),
-            &Mat::default(),
-        )?;
-
-        if max_val < threshold as f64 {
-            continue;
-        }
-
-        // 将降采样坐标映射回原图坐标，宽高使用“原始模板尺寸”，避免框尺寸漂移。
-        let x = ((max_loc.x as f64) / scale).round() as i32;
-        let y = ((max_loc.y as f64) / scale).round() as i32;
-        let width = target.mat_gray.cols();
-        let height = target.mat_gray.rows();
-
-        detections.push(DetectionBox {
-            target_name: target.name.clone(),
-            confidence: max_val as f32,
-            x: x.max(0),
-            y: y.max(0),
-            width: width.max(1),
-            height: height.max(1),
-        });
-    }
-
-    Ok(detections)
+/// 一次性加载的模板集合（离线阶段产物）。
+struct LoadedTemplates {
+    /// (模板灰度图, 预提取的 ORB 特征 —— 小模板可能为 None)
+    templates: Vec<(Mat, Option<OrbTemplate>)>,
 }
 
-/// 从 static 目录加载所有 target* 模板到内存。
-///
-/// 约定：
-/// - 文件名必须以 target 开头。
-/// - 扩展名支持 png/jpg/jpeg/bmp/webp。
-///
-/// 预加载的意义：避免在实时循环中反复从磁盘读取模板，减少抖动。
-fn load_target_templates(static_dir: &Path) -> Result<Vec<TargetTemplate>> {
+/// 从 static 目录加载所有 target* 模板并预提取 ORB 特征。
+fn load_templates(static_dir: &Path) -> Result<LoadedTemplates> {
+    let config = DetectionConfig::default();
+    let mut orb = feature_matcher::create_orb(&config)?;
     let mut templates = Vec::new();
 
     for entry in fs::read_dir(static_dir)
@@ -366,6 +266,7 @@ fn load_target_templates(static_dir: &Path) -> Result<Vec<TargetTemplate>> {
             Some(n) => n,
             None => continue,
         };
+
         // 只处理 target* 命名约定的图片。
         if !file_name.starts_with("target") {
             continue;
@@ -376,38 +277,26 @@ fn load_target_templates(static_dir: &Path) -> Result<Vec<TargetTemplate>> {
             .and_then(|e| e.to_str())
             .map(|s| s.to_ascii_lowercase())
             .unwrap_or_default();
+
         if !matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "bmp" | "webp") {
             continue;
         }
 
-        let mat_gray = imgcodecs::imread(&path_to_string(&path), imgcodecs::IMREAD_GRAYSCALE)
-            .with_context(|| format!("读取目标模板失败: {}", path.display()))?;
-        // 防御性判断：损坏图片可能导致空 Mat。
-        if mat_gray.empty() {
+        // 加载灰度模板。
+        let template_gray = opencv::imgcodecs::imread(
+            &path.to_string_lossy().into_owned(),
+            opencv::imgcodecs::IMREAD_GRAYSCALE,
+        )
+        .with_context(|| format!("读取目标模板失败: {}", path.display()))?;
+
+        if template_gray.empty() {
             continue;
         }
 
-        let scaled_w = ((mat_gray.cols() as f64) * DETECT_DOWNSAMPLE_SCALE)
-            .round()
-            .max(1.0) as i32;
-        let scaled_h = ((mat_gray.rows() as f64) * DETECT_DOWNSAMPLE_SCALE)
-            .round()
-            .max(1.0) as i32;
-        let mut mat_gray_scaled = Mat::default();
-        imgproc::resize(
-            &mat_gray,
-            &mut mat_gray_scaled,
-            core::Size::new(scaled_w, scaled_h),
-            0.0,
-            0.0,
-            imgproc::INTER_AREA,
-        )?;
+        // 预提取 ORB 特征（小模板可能失败，此时降级为纯模板匹配）。
+        let orb_template = feature_matcher::prepare_template(&path, &mut orb).ok();
 
-        templates.push(TargetTemplate {
-            name: file_name.to_string(),
-            mat_gray,
-            mat_gray_scaled,
-        });
+        templates.push((template_gray, orb_template));
     }
 
     if templates.is_empty() {
@@ -416,31 +305,28 @@ fn load_target_templates(static_dir: &Path) -> Result<Vec<TargetTemplate>> {
         ));
     }
 
-    Ok(templates)
+    Ok(LoadedTemplates { templates })
 }
 
-/// 选择主显示器；若未标记主屏，则回退到第一个显示器。
-fn choose_primary_monitor() -> Result<Monitor> {
-    let monitors = Monitor::all().context("读取显示器列表失败")?;
-    if monitors.is_empty() {
-        return Err(anyhow!("未检测到可用显示器"));
-    }
-
-    for monitor in &monitors {
-        if monitor.is_primary().unwrap_or(false) {
-            return Ok(monitor.clone());
-        }
-    }
-
-    Ok(monitors[0].clone())
+/// 将 BGRA 字节缓冲转为 BGR Mat（用于 OpenCV 显示）。
+fn bgra_to_bgr_mat(buffer: &[u8], _width: u32, height: u32) -> Result<Mat> {
+    let mat_1d = Mat::from_slice(buffer).context("将 BGRA 缓冲转为 Mat 失败")?;
+    let bgra_mat = mat_1d
+        .reshape(4, height as i32)
+        .context("重塑 BGRA Mat 形状失败")?;
+    let mut bgr = Mat::default();
+    imgproc::cvt_color(
+        &bgra_mat,
+        &mut bgr,
+        imgproc::COLOR_BGRA2BGR,
+        0,
+        AlgorithmHint::ALGO_HINT_DEFAULT,
+    )
+    .context("BGRA 转 BGR 失败")?;
+    Ok(bgr)
 }
 
 /// 在常见执行目录下定位 static 目录。
-///
-/// 兼容场景：
-/// - 在 detective crate 目录运行
-/// - 在 src-tauri 目录运行
-/// - 在 workspace 根目录运行
 fn locate_static_dir() -> Result<PathBuf> {
     let cwd = std::env::current_dir().context("无法读取当前工作目录")?;
     let candidates = [
@@ -453,18 +339,17 @@ fn locate_static_dir() -> Result<PathBuf> {
         if !path.exists() {
             continue;
         }
-
         let mut has_target = false;
-        for entry in fs::read_dir(&path)? {
-            let entry = entry?;
-            if let Some(name) = entry.file_name().to_str() {
-                if name.starts_with("target") {
-                    has_target = true;
-                    break;
+        if let Ok(entries) = fs::read_dir(&path) {
+            for entry in entries.flatten() {
+                if let Some(name) = entry.file_name().to_str() {
+                    if name.starts_with("target") {
+                        has_target = true;
+                        break;
+                    }
                 }
             }
         }
-
         if has_target {
             return Ok(path);
         }
@@ -473,49 +358,74 @@ fn locate_static_dir() -> Result<PathBuf> {
     Err(anyhow!("未找到包含 target* 模板图片的 static 目录"))
 }
 
-/// 将路径转换为 OpenCV 所需字符串。
-///
-/// 使用 lossy 可避免极端情况下非 UTF-8 路径直接失败。
-fn path_to_string(path: &Path) -> String {
-    path.to_string_lossy().into_owned()
-}
-
 fn to_ms(d: Duration) -> f64 {
     d.as_secs_f64() * 1000.0
 }
 
-fn frame_to_bgr_mat(frame: Frame) -> Result<Mat> {
-    let width = frame.width as i32;
-    let height = frame.height as i32;
+// ─── 性能统计 ────────────────────────────────────────────────
 
-    let bgra_1d = Mat::from_slice(&frame.raw).context("将录制帧缓冲区转为 Mat 失败")?;
-    let bgra_mat = bgra_1d
-        .reshape(4, height)
-        .context("重塑 BGRA Mat 形状失败")?;
+#[derive(Debug, Default)]
+struct PerfStats {
+    frames: usize,
+    detect_runs: usize,
+    detect_skips: usize,
+    capture: Duration,
+    convert: Duration,
+    detect: Duration,
+    total: Duration,
+}
 
-    let mut frame_bgr = Mat::default();
-    imgproc::cvt_color(
-        &bgra_mat,
-        &mut frame_bgr,
-        imgproc::COLOR_BGRA2BGR,
-        0,
-        AlgorithmHint::ALGO_HINT_DEFAULT,
-    )
-    .context("BGRA 转 BGR 失败")?;
-
-    if frame_bgr.cols() != width || frame_bgr.rows() != height {
-        return Err(anyhow!(
-            "录制帧尺寸异常: expected={}x{}, actual={}x{}",
-            width,
-            height,
-            frame_bgr.cols(),
-            frame_bgr.rows()
-        ));
+impl PerfStats {
+    fn push_frame(
+        &mut self,
+        did_detect: bool,
+        capture: Duration,
+        convert: Duration,
+        detect: Duration,
+        total: Duration,
+    ) {
+        self.frames += 1;
+        if did_detect {
+            self.detect_runs += 1;
+        } else {
+            self.detect_skips += 1;
+        }
+        self.capture += capture;
+        self.convert += convert;
+        self.detect += detect;
+        self.total += total;
     }
 
-    if frame_bgr.empty() {
-        return Err(anyhow!("录制帧为空"));
-    }
+    fn print_summary(&self, interval_ms: u64) {
+        if self.frames == 0 {
+            info!("[perf summary] 没有可统计的帧");
+            return;
+        }
 
-    Ok(frame_bgr)
+        let f = self.frames as f64;
+        let avg_capture = to_ms(self.capture) / f;
+        let avg_convert = to_ms(self.convert) / f;
+        let avg_detect = to_ms(self.detect) / f;
+        let avg_total = to_ms(self.total) / f;
+
+        let fps = if avg_total > 0.0 {
+            1000.0 / avg_total
+        } else {
+            f64::INFINITY
+        };
+
+        info!(
+            "[perf summary] frames={} detect_runs={} detect_skips={} interval={}ms \
+             avg_capture={:.2}ms avg_convert={:.2}ms avg_detect={:.2}ms avg_total={:.2}ms fps={:.2}",
+            self.frames,
+            self.detect_runs,
+            self.detect_skips,
+            interval_ms,
+            avg_capture,
+            avg_convert,
+            avg_detect,
+            avg_total,
+            fps,
+        );
+    }
 }

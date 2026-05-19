@@ -1,8 +1,26 @@
 use detective::real_time_detective::{run_realtime_detection, run_realtime_detection_headless};
-use detective::screen_shot::take_screenshot;
+use detective::screen_shot::{diagnose, take_screenshot};
 
 #[test]
 fn take_screenshot_runs_without_panic() {
+    let _ = env_logger::try_init();
+
+    let (result, diag) = diagnose();
+    for line in &diag {
+        eprintln!("[诊断] {line}");
+    }
+    match &result {
+        Some(det) => {
+            eprintln!(
+                "[诊断] 检测成功: 中心=({}, {}), 尺寸={}x{}, conf={:.3}, method={}",
+                det.center_x, det.center_y, det.width, det.height, det.confidence, det.method
+            );
+        }
+        None => {
+            eprintln!("[诊断] 未检测到目标");
+        }
+    }
+
     take_screenshot();
 }
 
