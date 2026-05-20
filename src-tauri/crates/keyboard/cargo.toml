@@ -1,0 +1,18 @@
+[package]
+name = "keyboard"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "keyboard"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+log = "0.4"
+serde = { workspace = true }
+serde_json = { workspace = true }
+enigo = { workspace = true }
+
+[dev-dependencies]
+env_logger = "0.11"
