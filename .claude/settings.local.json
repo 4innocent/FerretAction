@@ -8,7 +8,18 @@
       "Bash(mkdir -p icons)",
       "Bash(python -c \"from PIL import Image; print\\('PIL available'\\)\")",
       "Bash(python3 -c \"from PIL import Image; print\\('PIL available'\\)\")",
-      "Bash(cargo test *)"
+      "Bash(cargo test *)",
+      "Bash(cat vite.config.ts)",
+      "Bash(cat vite.config.js)",
+      "Bash(cat uno.config.ts)",
+      "Bash(cat uno.config.js)",
+      "Bash(ls tsconfig*)",
+      "Bash(npm install *)",
+      "Bash(pnpm add *)",
+      "Bash(npx vue-tsc *)",
+      "Bash(npx vite *)",
+      "Bash(curl -s http://localhost:1420)",
+      "Bash(pkill -f \"vite\")"
     ]
   }
 }
