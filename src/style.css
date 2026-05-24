@@ -1,0 +1,230 @@
+:root {
+  --surface-ground: #0a0a0f;
+  --surface-section: #12121a;
+  --surface-card: #16161f;
+  --surface-overlay: #1a1a24;
+  --surface-border: #2a2a3a;
+  --surface-hover: #252535;
+  --text-color: #e4e4ef;
+  --text-color-secondary: #8888a0;
+  --primary-color: #6366f1;
+  --primary-color-text: #ffffff;
+  --cyan-400: #22d3ee;
+  --green-400: #4ade80;
+  --amber-400: #fbbf24;
+  --red-400: #f87171;
+  --purple-400: #c084fc;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #app {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--surface-ground);
+  color: var(--text-color);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* PrimeVue Dark Theme Overrides */
+.p-component {
+  font-family: inherit;
+}
+
+.p-button {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.p-button.p-button-outlined {
+  background: transparent;
+  border-color: var(--surface-border);
+  color: var(--text-color);
+}
+
+.p-button.p-button-text {
+  background: transparent;
+  color: var(--text-color-secondary);
+}
+
+.p-inputtext {
+  background: var(--surface-card);
+  border-color: var(--surface-border);
+  color: var(--text-color);
+}
+
+.p-inputtext:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.p-dropdown {
+  background: var(--surface-card);
+  border-color: var(--surface-border);
+}
+
+.p-dropdown-panel {
+  background: var(--surface-overlay);
+  border-color: var(--surface-border);
+}
+
+.p-tabview .p-tabview-nav {
+  background: transparent;
+  border-color: var(--surface-border);
+}
+
+.p-tabview .p-tabview-nav li.p-highlight .p-tabview-nav-link {
+  background: transparent;
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.p-tabview .p-tabview-panels {
+  background: transparent;
+  padding: 0;
+}
+
+.p-splitter {
+  background: var(--surface-ground);
+  border: none;
+}
+
+.p-splitter-gutter {
+  background: var(--surface-border);
+}
+
+.p-splitter-gutter-handle {
+  background: var(--surface-hover);
+}
+
+.p-tree {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.p-tree .p-tree-container .p-treenode .p-treenode-content {
+  padding: 0.5rem;
+  border-radius: 6px;
+}
+
+.p-tree .p-tree-container .p-treenode .p-treenode-content:hover {
+  background: var(--surface-hover);
+}
+
+.p-tree .p-tree-container .p-treenode .p-treenode-content.p-highlight {
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--primary-color);
+}
+
+.p-accordion .p-accordion-header .p-accordion-header-link {
+  background: var(--surface-card);
+  border-color: var(--surface-border);
+  color: var(--text-color);
+}
+
+.p-accordion .p-accordion-content {
+  background: var(--surface-section);
+  border-color: var(--surface-border);
+}
+
+.p-toast {
+  opacity: 1;
+}
+
+.p-toast .p-toast-message {
+  background: var(--surface-overlay);
+  border: 1px solid var(--surface-border);
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--surface-section);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--surface-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--surface-hover);
+}
+
+/* X6 Graph Container */
+.x6-graph-scroller {
+  background: var(--surface-section) !important;
+}
+
+.x6-graph-background {
+  background: var(--surface-section) !important;
+}
+
+/* Custom Utilities */
+.glass-panel {
+  background: rgba(22, 22, 31, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--surface-border);
+}
+
+.node-card {
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.node-card:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 20px rgba(99, 102, 241, 0.15);
+}
+
+.status-running {
+  color: var(--cyan-400);
+}
+
+.status-success {
+  color: var(--green-400);
+}
+
+.status-warning {
+  color: var(--amber-400);
+}
+
+.status-error {
+  color: var(--red-400);
+}
+
+/* Animation */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 5px rgba(99, 102, 241, 0.3); }
+  50% { box-shadow: 0 0 20px rgba(99, 102, 241, 0.6); }
+}
+
+.pulse-glow {
+  animation: pulse-glow 2s infinite;
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.slide-in {
+  animation: slide-in 0.3s ease forwards;
+}

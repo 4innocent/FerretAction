@@ -1,29 +1,25 @@
 {
-  "name": "ferretaction",
+  "name": "automate-vision",
+  "version": "1.0.0",
   "private": true,
-  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
-    "preview": "vite preview",
-    "tauri": "tauri"
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
-    "@antv/x6": "^3.1.7",
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-log": "~2",
-    "@tauri-apps/plugin-opener": "^2",
-    "lucide-vue-next": "^1.0.0",
+    "@antv/x6": "3.1.7",
+    "@primevue/themes": "4.5.4",
+    "@vueuse/core": "13.5.0",
+    "primeicons": "7.0.0",
+    "primevue": "4.5.5",
     "tslib": "^2.8.1",
-    "unocss": "^66.6.6",
-    "vue": "^3.5.13"
+    "vue": "3.5.17"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2",
-    "@vitejs/plugin-vue": "^5.2.1",
-    "typescript": "~5.6.2",
-    "vite": "^6.0.3",
-    "vue-tsc": "^2.1.10"
+    "@vitejs/plugin-vue": "6.0.7",
+    "typescript": "5.7.3",
+    "vite": "6.3.5"
   }
 }

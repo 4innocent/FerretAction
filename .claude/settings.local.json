@@ -19,7 +19,18 @@
       "Bash(npx vue-tsc *)",
       "Bash(npx vite *)",
       "Bash(curl -s http://localhost:1420)",
-      "Bash(pkill -f \"vite\")"
+      "Bash(pkill -f \"vite\")",
+      "Bash(cat -A \"d:\\\\\\\\KMP\\\\\\\\FerretAction\\\\\\\\src\\\\\\\\components\\\\\\\\automation\\\\\\\\WorkflowCanvas.vue\")",
+      "Bash(python -c \"from PIL import Image; print\\('PIL OK'\\)\")",
+      "Bash(pip install *)",
+      "Bash(node -e \"const sharp = require\\('sharp'\\); console.log\\('sharp available'\\)\")",
+      "Bash(powershell -ExecutionPolicy Bypass -File \"d:\\\\KMP\\\\FerretAction\\\\analyze_images.ps1\")",
+      "Bash(powershell -ExecutionPolicy Bypass -File \"d:\\\\KMP\\\\FerretAction\\\\analyze_structure.ps1\")",
+      "Bash(powershell -ExecutionPolicy Bypass -File \"d:\\\\KMP\\\\FerretAction\\\\analyze_design.ps1\")",
+      "Bash(grep -o '\\\\.bg-card\\\\\\\\\\\\\\\\/50{[^}]*}' dist/assets/index-*.css)",
+      "Bash(grep -o '\\\\.bg-secondary\\\\\\\\\\\\\\\\/50{[^}]*}' dist/assets/index-*.css)",
+      "Bash(grep -o '\\\\.bg-destructive\\\\\\\\\\\\\\\\/5{[^}]*}' dist/assets/index-*.css)",
+      "Bash(grep -o '\\\\.bg-primary\\\\\\\\\\\\\\\\/10{[^}]*}' dist/assets/index-*.css)"
     ]
   }
 }
