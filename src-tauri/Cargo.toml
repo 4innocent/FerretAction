@@ -35,9 +35,14 @@ opencv = { version = "0.98.1", default-features = false, features = [
 enigo = "0.6.1"
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2.11.0", features = [] }
 tauri-plugin-opener = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }
 tauri-plugin-log = "2"
+log = "0.4"
 keyboard = { path = "./crates/keyboard" }
+workflow = { path = "./crates/workflow" }
+tauri-plugin-sql = { version = "2.0.0", features = [
+    "sqlite",
+] } # or "postgres", or "mysql"

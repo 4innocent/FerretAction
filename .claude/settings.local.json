@@ -30,7 +30,17 @@
       "Bash(grep -o '\\\\.bg-card\\\\\\\\\\\\\\\\/50{[^}]*}' dist/assets/index-*.css)",
       "Bash(grep -o '\\\\.bg-secondary\\\\\\\\\\\\\\\\/50{[^}]*}' dist/assets/index-*.css)",
       "Bash(grep -o '\\\\.bg-destructive\\\\\\\\\\\\\\\\/5{[^}]*}' dist/assets/index-*.css)",
-      "Bash(grep -o '\\\\.bg-primary\\\\\\\\\\\\\\\\/10{[^}]*}' dist/assets/index-*.css)"
+      "Bash(grep -o '\\\\.bg-primary\\\\\\\\\\\\\\\\/10{[^}]*}' dist/assets/index-*.css)",
+      "Bash(grep -iv \"waiting\\\\|awaited\\\\|wait\\\\$\\\\|wait\\(\\)\\\\|waitFor\\\\|timeout\\\\|setTimeout\\\\|pending\")",
+      "Bash(curl -s http://localhost:5173)",
+      "Bash(curl -s http://localhost:5173/src/main.ts)",
+      "Bash(curl -s http://localhost:5173/src/App.vue)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(git -C /Users/kang/PM/Project/FerretAction log --oneline -10)",
+      "Bash(grep -n \"Other\" /Users/kang/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/enigo-0.6.1/src/keycodes.rs | head -5)",
+      "Read(//Users/kang/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/enigo-0.6.1/src/**)",
+      "Bash(pnpm remove *)",
+      "Bash(cargo build *)"
     ]
   }
 }

@@ -8,8 +8,7 @@
           :key="block.type"
           class="action-block"
           :style="{ '--block-color': block.color }"
-          draggable="true"
-          @dragstart="onDragStart($event, block)"
+          @mousedown="onDragStart($event, block)"
         >
           <div class="block-icon">
             <i :class="block.icon"></i>
@@ -30,8 +29,7 @@
           :key="block.type"
           class="action-block"
           :style="{ '--block-color': block.color }"
-          draggable="true"
-          @dragstart="onDragStart($event, block)"
+          @mousedown="onDragStart($event, block)"
         >
           <div class="block-icon">
             <i :class="block.icon"></i>
@@ -52,8 +50,7 @@
           :key="block.type"
           class="action-block"
           :style="{ '--block-color': block.color }"
-          draggable="true"
-          @dragstart="onDragStart($event, block)"
+          @mousedown="onDragStart($event, block)"
         >
           <div class="block-icon">
             <i :class="block.icon"></i>
@@ -74,8 +71,7 @@
           :key="block.type"
           class="action-block"
           :style="{ '--block-color': block.color }"
-          draggable="true"
-          @dragstart="onDragStart($event, block)"
+          @mousedown="onDragStart($event, block)"
         >
           <div class="block-icon">
             <i :class="block.icon"></i>
@@ -96,8 +92,7 @@
           :key="block.type"
           class="action-block"
           :style="{ '--block-color': block.color }"
-          draggable="true"
-          @dragstart="onDragStart($event, block)"
+          @mousedown="onDragStart($event, block)"
         >
           <div class="block-icon">
             <i :class="block.icon"></i>
@@ -117,7 +112,7 @@ import { ref } from 'vue'
 import type { ActionBlock } from '../types'
 
 const emit = defineEmits<{
-  'drag-start': [type: string]
+  'drag-start': [block: ActionBlock, event: MouseEvent]
 }>()
 
 const controlBlocks = ref<ActionBlock[]>([
@@ -130,7 +125,6 @@ const controlBlocks = ref<ActionBlock[]>([
 
 const imageBlocks = ref<ActionBlock[]>([
   { type: 'find-image', label: '查找图像', icon: 'pi pi-search', color: '#6366f1', description: '在屏幕上定位图像目标' },
-  { type: 'wait-image', label: '等待图像', icon: 'pi pi-eye', color: '#6366f1', description: '等待图像出现' },
   { type: 'image-gone', label: '图像消失', icon: 'pi pi-eye-slash', color: '#6366f1', description: '等待图像消失' },
 ])
 
@@ -138,7 +132,6 @@ const mouseBlocks = ref<ActionBlock[]>([
   { type: 'move-mouse', label: '移动鼠标', icon: 'pi pi-arrows-alt', color: '#f59e0b', description: '移动鼠标到指定位置' },
   { type: 'click', label: '点击', icon: 'pi pi-external-link', color: '#f59e0b', description: '执行鼠标点击' },
   { type: 'double-click', label: '双击', icon: 'pi pi-clone', color: '#f59e0b', description: '执行双击操作' },
-  { type: 'right-click', label: '右键点击', icon: 'pi pi-ellipsis-v', color: '#f59e0b', description: '执行右键点击' },
   { type: 'drag', label: '拖拽', icon: 'pi pi-arrows-h', color: '#f59e0b', description: '拖拽操作' },
   { type: 'scroll', label: '滚动', icon: 'pi pi-sort-alt', color: '#f59e0b', description: '鼠标滚轮滚动' },
 ])
@@ -154,13 +147,8 @@ const waitBlocks = ref<ActionBlock[]>([
   { type: 'wait-condition', label: '等待条件', icon: 'pi pi-hourglass', color: '#475569', description: '等待条件满足' },
 ])
 
-const onDragStart = (event: DragEvent, block: ActionBlock) => {
-  event.dataTransfer?.setData('application/json', JSON.stringify({
-    type: 'action-block',
-    blockType: block.type,
-    label: block.label
-  }))
-  emit('drag-start', block.type)
+const onDragStart = (event: MouseEvent, block: ActionBlock) => {
+  emit('drag-start', block, event)
 }
 </script>
 

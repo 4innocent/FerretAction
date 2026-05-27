@@ -1,136 +1,242 @@
 <template>
   <div class="workflow-manager">
     <div class="manager-header">
-      <h3>工作流管理</h3>
-      <div class="header-actions">
-        <Button
-          icon="pi pi-plus"
-          severity="success"
-          size="small"
-          @click="createWorkflow"
-          v-tooltip.bottom="'新建工作流'"
-        />
-        <Button
-          icon="pi pi-folder-plus"
-          severity="secondary"
-          size="small"
-          @click="createFolder"
-          v-tooltip.bottom="'新建文件夹'"
-        />
-        <Button
-          icon="pi pi-upload"
-          severity="secondary"
-          size="small"
-          @click="importWorkflow"
-          v-tooltip.bottom="'导入工作流'"
-        />
+      <div class="search-box" :style="{ maxWidth: Math.min(Math.max(100, sidebarWidth - 90), 320) + 'px' }">
+        <i class="pi pi-search"></i>
+        <InputText v-model="searchQuery" placeholder="搜索..." />
       </div>
+      <Button
+        icon="pi pi-folder-plus"
+        size="small"
+        @click="startCreateFolder"
+        v-tooltip="'新建文件夹'"
+      />
+      <Button
+        icon="pi pi-plus"
+        size="small"
+        severity="success"
+        @click="startCreateWorkflow(null)"
+        v-tooltip="'新建工作流'"
+      />
     </div>
 
-    <div class="workflow-stats">
-      <div class="stat-item">
-        <span class="stat-value">{{ workflows.length }}</span>
-        <span class="stat-label">工作流</span>
+    <div class="folders-list">
+      <!-- Root-level workflows (no folder) -->
+      <div v-if="rootWorkflows.length > 0 || !searchQuery" class="folder-group">
+        <div
+          v-for="wf in rootWorkflows"
+          :key="wf.id"
+          class="workflow-row"
+          :class="{ selected: activeWorkflowId === wf.id }"
+          @click="selectWorkflow(wf)"
+        >
+          <div class="row-icon">
+            <i class="pi pi-sitemap"></i>
+          </div>
+          <div class="row-content">
+            <span class="row-name">{{ wf.name }}</span>
+          </div>
+          <div class="row-actions">
+            <Button
+              icon="pi pi-play"
+              text
+              size="small"
+              class="row-action-btn"
+              @click.stop="runWorkflow(wf)"
+              v-tooltip="'运行'"
+            />
+            <Button
+              icon="pi pi-pencil"
+              text
+              size="small"
+              class="row-action-btn"
+              @click.stop="startRenameWorkflow(wf)"
+              v-tooltip="'重命名'"
+            />
+            <Button
+              icon="pi pi-trash"
+              text
+              size="small"
+              severity="danger"
+              class="row-action-btn"
+              @click.stop="confirmDeleteWorkflow(wf)"
+              v-tooltip="'删除'"
+            />
+          </div>
+        </div>
       </div>
-      <div class="stat-item">
-        <span class="stat-value">{{ folders.length }}</span>
-        <span class="stat-label">文件夹</span>
-      </div>
-      <div class="stat-item">
-        <span class="stat-value">{{ runningCount }}</span>
-        <span class="stat-label">运行中</span>
-      </div>
-    </div>
 
-    <div class="workflow-tree">
-      <Tree
-        :value="treeNodes"
-        v-model:selectionKeys="selectedKeys"
-        selectionMode="single"
-        :filter="true"
-        filterMode="lenient"
-        :filterPlaceholder="''"
-        class="workflow-tree-component"
-        @node-select="onNodeSelect"
-        @node-unselect="onNodeUnselect"
+      <!-- Folders -->
+      <div
+        v-for="folder in filteredFolders"
+        :key="folder.id"
+        class="folder-group"
       >
-        <template #default="{ node }">
+        <div class="folder-header" @click="toggleFolder(folder.id)">
+          <i
+            class="pi folder-chevron"
+            :class="
+              expandedFolders.has(folder.id)
+                ? 'pi-chevron-down'
+                : 'pi-chevron-right'
+            "
+          ></i>
+          <i class="pi pi-folder-open folder-icon"></i>
+          <span class="folder-name">{{ folder.name }}</span>
+          <span class="folder-count">{{
+            getFolderWorkflows(folder.id).length
+          }}</span>
+          <div class="folder-more" @click.stop>
+            <Button
+              icon="pi pi-ellipsis"
+              text
+              size="small"
+              @click="toggleMenu(folder.id)"
+            />
+            <div v-if="activeMenu === folder.id" class="popup-menu">
+              <button
+                class="popup-item"
+                @click="
+                  startCreateWorkflow(folder.id);
+                  activeMenu = null;
+                "
+              >
+                <i class="pi pi-plus"></i>
+                <span>新建工作流</span>
+              </button>
+              <button
+                class="popup-item"
+                @click="
+                  startRenameFolder(folder);
+                  activeMenu = null;
+                "
+              >
+                <i class="pi pi-pencil"></i>
+                <span>重命名</span>
+              </button>
+              <button
+                class="popup-item popup-item-danger"
+                @click="
+                  confirmDeleteFolder(folder);
+                  activeMenu = null;
+                "
+              >
+                <i class="pi pi-trash"></i>
+                <span>删除文件夹</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="expandedFolders.has(folder.id)" class="folder-workflows">
           <div
-            class="tree-node"
-            :class="{ 'is-active': node.data?.id === activeWorkflowId }"
+            v-for="wf in getFolderWorkflows(folder.id)"
+            :key="wf.id"
+            class="workflow-row"
+            :class="{ selected: activeWorkflowId === wf.id }"
+            @click="selectWorkflow(wf)"
           >
-            <div class="node-icon">
-              <i v-if="node.type === 'folder'" class="pi pi-folder" />
-              <i v-else class="pi pi-sitemap" />
+            <div class="row-icon">
+              <i class="pi pi-sitemap"></i>
             </div>
-            <div class="node-content">
-              <span class="node-label">{{ node.label }}</span>
-              <div v-if="node.type === 'workflow'" class="node-meta">
-                <Tag
-                  v-if="node.data?.status === 'running'"
-                  severity="success"
-                  value="运行中"
-                  class="status-tag"
-                />
-                <Tag
-                  v-else-if="node.data?.status === 'error'"
-                  severity="danger"
-                  value="错误"
-                  class="status-tag"
-                />
-                <Tag
-                  v-else-if="node.data?.status === 'paused'"
-                  severity="warn"
-                  value="暂停"
-                  class="status-tag"
-                />
-                <span class="node-date">{{
-                  formatDate(node.data?.updatedAt)
-                }}</span>
-              </div>
+            <div class="row-content">
+              <span class="row-name">{{ wf.name }}</span>
             </div>
-            <div class="node-actions" @click.stop>
+            <div class="row-actions">
               <Button
-                v-if="node.type === 'workflow'"
                 icon="pi pi-play"
-                severity="success"
                 text
                 size="small"
-                @click="runWorkflow(node.data)"
-                v-tooltip.bottom="'运行'"
+                class="row-action-btn"
+                @click.stop="runWorkflow(wf)"
+                v-tooltip="'运行'"
               />
               <Button
-                icon="pi pi-ellipsis-v"
-                severity="secondary"
+                icon="pi pi-pencil"
                 text
                 size="small"
-                @click="showNodeMenu($event, node)"
+                class="row-action-btn"
+                @click.stop="startRenameWorkflow(wf)"
+                v-tooltip="'重命名'"
+              />
+              <Button
+                icon="pi pi-trash"
+                text
+                size="small"
+                severity="danger"
+                class="row-action-btn"
+                @click.stop="confirmDeleteWorkflow(wf)"
+                v-tooltip="'删除'"
               />
             </div>
           </div>
-        </template>
-      </Tree>
+
+          <div
+            v-if="getFolderWorkflows(folder.id).length === 0"
+            class="empty-folder"
+          >
+            <span>文件夹为空</span>
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="folders.length === 0 && workflows.length === 0 && !loading"
+        class="empty-state"
+      >
+        <i class="pi pi-folder-open"></i>
+        <p>暂无工作流</p>
+        <Button
+          label="新建工作流"
+          icon="pi pi-plus"
+          size="small"
+          @click="startCreateWorkflow(null)"
+        />
+      </div>
     </div>
 
-    <Menu ref="nodeMenu" :model="nodeMenuItems" :popup="true" />
+    <!-- Rename / Create Folder Dialog -->
+    <Dialog
+      v-model:visible="showRenameDialog"
+      :header="renameTarget ? '重命名' : '新建文件夹'"
+      :modal="true"
+      :style="{ width: '350px' }"
+    >
+      <div class="dialog-body">
+        <InputText
+          v-model="renameValue"
+          :placeholder="renameTarget ? '输入名称' : '文件夹名称'"
+          class="w-full"
+          @keyup.enter="confirmRename"
+        />
+      </div>
+      <template #footer>
+        <Button label="取消" text @click="showRenameDialog = false" />
+        <Button
+          :label="renameTarget ? '确定' : '创建'"
+          @click="confirmRename"
+        />
+      </template>
+    </Dialog>
 
+    <!-- Create Dialog -->
     <Dialog
       v-model:visible="showCreateDialog"
-      :header="createDialogTitle"
+      header="新建工作流"
       :modal="true"
       :style="{ width: '400px' }"
-      class="create-dialog"
     >
-      <div class="dialog-content">
+      <div class="dialog-body">
         <div class="form-field">
           <label>名称</label>
           <InputText
             v-model="newItemName"
             placeholder="输入名称"
             class="w-full"
+            @keyup.enter="confirmCreate"
           />
         </div>
-        <div v-if="createType === 'workflow'" class="form-field">
+        <div class="form-field">
           <label>描述</label>
           <Textarea
             v-model="newItemDescription"
@@ -139,350 +245,168 @@
             class="w-full"
           />
         </div>
-        <div v-if="createType === 'workflow'" class="form-field">
-          <label>保存位置</label>
-          <Select
-            v-model="selectedFolder"
-            :options="folderOptions"
-            optionLabel="label"
-            optionValue="value"
-            placeholder="选择文件夹"
-            class="w-full"
-          />
-        </div>
-        <div v-if="createType === 'workflow'" class="form-field">
-          <label>模板</label>
-          <Select
-            v-model="selectedTemplate"
-            :options="templateOptions"
-            optionLabel="label"
-            optionValue="value"
-            placeholder="选择模板（可选）"
-            class="w-full"
-          />
-        </div>
       </div>
       <template #footer>
-        <Button
-          label="取消"
-          severity="secondary"
-          @click="showCreateDialog = false"
-        />
-        <Button
-          :label="createType === 'workflow' ? '创建工作流' : '创建文件夹'"
-          @click="confirmCreate"
-        />
+        <Button label="取消" text @click="showCreateDialog = false" />
+        <Button label="创建工作流" @click="confirmCreate" />
       </template>
     </Dialog>
 
+    <!-- Delete Confirm Dialog -->
     <Dialog
       v-model:visible="showDeleteDialog"
       header="确认删除"
       :modal="true"
       :style="{ width: '400px' }"
-      class="delete-dialog"
     >
-      <div class="dialog-content">
+      <div class="dialog-body delete-content">
         <i class="pi pi-exclamation-triangle warning-icon" />
         <p>
-          确定要删除 <strong>{{ deleteTarget?.label }}</strong> 吗？
+          确定要删除 <strong>{{ deleteTargetName }}</strong> 吗？
         </p>
-        <p v-if="deleteTarget?.type === 'folder'" class="warning-text">
+        <p v-if="deleteTargetType === 'folder'" class="warning-text">
           文件夹内的所有工作流也将被删除！
         </p>
       </div>
       <template #footer>
-        <Button
-          label="取消"
-          severity="secondary"
-          @click="showDeleteDialog = false"
-        />
+        <Button label="取消" text @click="showDeleteDialog = false" />
         <Button label="删除" severity="danger" @click="confirmDelete" />
-      </template>
-    </Dialog>
-
-    <Dialog
-      v-model:visible="showRenameDialog"
-      header="重命名"
-      :modal="true"
-      :style="{ width: '350px' }"
-    >
-      <div class="dialog-content">
-        <div class="form-field">
-          <label>新名称</label>
-          <InputText
-            v-model="renameValue"
-            class="w-full"
-            @keyup.enter="confirmRename"
-          />
-        </div>
-      </div>
-      <template #footer>
-        <Button
-          label="取消"
-          severity="secondary"
-          @click="showRenameDialog = false"
-        />
-        <Button label="确定" @click="confirmRename" />
       </template>
     </Dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import Button from "primevue/button";
 import InputText from "primevue/inputtext";
-import IconField from "primevue/iconfield";
-import InputIcon from "primevue/inputicon";
-import Tree from "primevue/tree";
-import Tag from "primevue/tag";
-import Menu from "primevue/menu";
 import Dialog from "primevue/dialog";
 import Textarea from "primevue/textarea";
-import Select from "primevue/select";
+import { useToast } from "primevue/usetoast";
+import type { Workflow, Folder } from "../types";
+import {
+  initDb,
+  listWorkflows,
+  listFolders,
+  createWorkflow as dbCreateWorkflow,
+  createFolder as dbCreateFolder,
+  deleteWorkflow as dbDeleteWorkflow,
+  deleteFolder as dbDeleteFolder,
+  updateWorkflow as dbUpdateWorkflow,
+  renameFolder as dbRenameFolder,
+} from "../db";
 
-interface Workflow {
-  id: string;
-  name: string;
-  description?: string;
-  folderId?: string;
-  status: "idle" | "running" | "paused" | "error";
-  createdAt: Date;
-  updatedAt: Date;
-  lastOpened?: Date;
-  nodeCount: number;
-}
+const toast = useToast();
 
-interface Folder {
-  id: string;
-  name: string;
-  parentId?: string;
-  createdAt: Date;
-}
+const props = defineProps<{
+  activeWorkflowId: string | null;
+  sidebarWidth: number;
+}>();
 
 const emit = defineEmits<{
   (e: "select", workflow: Workflow): void;
   (e: "run", workflow: Workflow): void;
   (
     e: "create",
-    data: {
-      name: string;
-      description?: string;
-      folderId?: string;
-      template?: string;
-    },
+    data: { name: string; description?: string; folderId?: string },
   ): void;
+  (e: "delete", workflowId: string): void;
 }>();
 
+// State
 const searchQuery = ref("");
-const selectedKeys = ref<Record<string, boolean>>({});
-const activeWorkflowId = ref("wf-1");
-const nodeMenu = ref();
+const expandedFolders = ref<Set<string>>(new Set());
+const activeMenu = ref<string | null>(null);
+const loading = ref(true);
 
+const folders = ref<Folder[]>([]);
+const workflows = ref<Workflow[]>([]);
+
+// Dialog state
 const showCreateDialog = ref(false);
-const createType = ref<"workflow" | "folder">("workflow");
 const newItemName = ref("");
 const newItemDescription = ref("");
-const selectedFolder = ref<string | null>(null);
-const selectedTemplate = ref<string | null>(null);
-
-const showDeleteDialog = ref(false);
-const deleteTarget = ref<{
-  label: string;
-  type: string;
-  data?: Workflow | Folder;
-} | null>(null);
+const pendingFolderId = ref<string | null>(null);
 
 const showRenameDialog = ref(false);
 const renameValue = ref("");
-const renameTarget = ref<{ key: string; type: string } | null>(null);
+const renameTarget = ref<{ id: string; type: "workflow" | "folder" } | null>(
+  null,
+);
 
-const folders = ref<Folder[]>([
-  { id: "folder-1", name: "登录自动化", createdAt: new Date("2024-01-15") },
-  { id: "folder-2", name: "数据采集", createdAt: new Date("2024-01-20") },
-  { id: "folder-3", name: "测试脚本", createdAt: new Date("2024-02-01") },
-]);
+const showDeleteDialog = ref(false);
+const deleteTargetId = ref<string | null>(null);
+const deleteTargetName = ref("");
+const deleteTargetType = ref<"workflow" | "folder">("workflow");
 
-const workflows = ref<Workflow[]>([
-  {
-    id: "wf-1",
-    name: "网站登录流程",
-    description: "自动登录目标网站",
-    folderId: "folder-1",
-    status: "idle",
-    createdAt: new Date("2024-01-15"),
-    updatedAt: new Date("2024-03-10"),
-    lastOpened: new Date("2024-03-10"),
-    nodeCount: 8,
-  },
-  {
-    id: "wf-2",
-    name: "验证码识别登录",
-    description: "带验证码的登录流程",
-    folderId: "folder-1",
-    status: "running",
-    createdAt: new Date("2024-01-18"),
-    updatedAt: new Date("2024-03-09"),
-    lastOpened: new Date("2024-03-09"),
-    nodeCount: 12,
-  },
-  {
-    id: "wf-3",
-    name: "商品信息采集",
-    description: "采集电商平台商品数据",
-    folderId: "folder-2",
-    status: "idle",
-    createdAt: new Date("2024-01-25"),
-    updatedAt: new Date("2024-03-08"),
-    lastOpened: new Date("2024-03-08"),
-    nodeCount: 15,
-  },
-  {
-    id: "wf-4",
-    name: "价格监控",
-    description: "定时监控商品价格变化",
-    folderId: "folder-2",
-    status: "paused",
-    createdAt: new Date("2024-02-01"),
-    updatedAt: new Date("2024-03-07"),
-    nodeCount: 10,
-  },
-  {
-    id: "wf-5",
-    name: "UI回归测试",
-    description: "自动化UI测试脚本",
-    folderId: "folder-3",
-    status: "error",
-    createdAt: new Date("2024-02-10"),
-    updatedAt: new Date("2024-03-06"),
-    nodeCount: 20,
-  },
-  {
-    id: "wf-6",
-    name: "表单自动填充",
-    description: "自动填写表单数据",
-    status: "idle",
-    createdAt: new Date("2024-02-15"),
-    updatedAt: new Date("2024-03-05"),
-    lastOpened: new Date("2024-03-05"),
-    nodeCount: 6,
-  },
-  {
-    id: "wf-7",
-    name: "批量文件处理",
-    description: "批量处理文件操作",
-    status: "idle",
-    createdAt: new Date("2024-02-20"),
-    updatedAt: new Date("2024-03-04"),
-    nodeCount: 9,
-  },
-]);
-
-const runningCount = computed(() => {
-  return workflows.value.filter(w => w.status === "running").length;
-});
-
-const treeNodes = computed(() => {
-  const nodes: any[] = [];
-
-  // Add folders with their workflows
-  folders.value.forEach(folder => {
-    const folderWorkflows = workflows.value.filter(
-      w => w.folderId === folder.id,
+// Computed
+const rootWorkflows = computed(() => {
+  if (searchQuery.value) {
+    const q = searchQuery.value.toLowerCase();
+    return workflows.value.filter(
+      w => !w.folderId && w.name.toLowerCase().includes(q),
     );
-    nodes.push({
-      key: folder.id,
-      label: folder.name,
-      type: "folder",
-      data: folder,
-      children: folderWorkflows.map(w => ({
-        key: w.id,
-        label: w.name,
-        type: "workflow",
-        data: w,
-      })),
-    });
+  }
+  return workflows.value.filter(w => !w.folderId);
+});
+
+const filteredFolders = computed(() => {
+  if (!searchQuery.value) return folders.value;
+  const q = searchQuery.value.toLowerCase();
+  return folders.value.filter(f => {
+    if (f.name.toLowerCase().includes(q)) return true;
+    return getFolderWorkflows(f.id).some(w => w.name.toLowerCase().includes(q));
   });
+});
 
-  // Add workflows without folder
-  const rootWorkflows = workflows.value.filter(w => !w.folderId);
-  rootWorkflows.forEach(w => {
-    nodes.push({
-      key: w.id,
-      label: w.name,
-      type: "workflow",
-      data: w,
+function getFolderWorkflows(folderId: string): Workflow[] {
+  return workflows.value.filter(w => w.folderId === folderId);
+}
+
+// Lifecycle
+onMounted(async () => {
+  try {
+    await initDb();
+    const [flds, wfs] = await Promise.all([listFolders(), listWorkflows()]);
+    folders.value = flds;
+    workflows.value = wfs;
+  } catch (e: any) {
+    toast.add({
+      severity: "error",
+      summary: "数据库初始化失败",
+      detail: String(e),
+      life: 6000,
     });
-  });
-
-  return nodes;
+  } finally {
+    loading.value = false;
+  }
 });
 
-const createDialogTitle = computed(() => {
-  return createType.value === "workflow" ? "新建工作流" : "新建文件夹";
-});
+// Close popup menu on outside click
+const closeMenu = (e: MouseEvent) => {
+  const target = e.target as HTMLElement;
+  if (!target.closest(".folder-more")) {
+    activeMenu.value = null;
+  }
+};
+onMounted(() => document.addEventListener("click", closeMenu));
+onUnmounted(() => document.removeEventListener("click", closeMenu));
 
-const folderOptions = computed(() => {
-  return [
-    { label: "根目录", value: null },
-    ...folders.value.map(f => ({ label: f.name, value: f.id })),
-  ];
-});
+// Folder toggle
+function toggleFolder(folderId: string) {
+  if (expandedFolders.value.has(folderId)) {
+    expandedFolders.value.delete(folderId);
+  } else {
+    expandedFolders.value.add(folderId);
+  }
+}
 
-const templateOptions = [
-  { label: "空白工作流", value: null },
-  { label: "网站登录模板", value: "login" },
-  { label: "数据采集模板", value: "scraping" },
-  { label: "表单填写模板", value: "form" },
-  { label: "文件处理模板", value: "file" },
-];
+function toggleMenu(folderId: string) {
+  activeMenu.value = activeMenu.value === folderId ? null : folderId;
+}
 
-const nodeMenuItems = ref([
-  {
-    label: "打开",
-    icon: "pi pi-folder-open",
-    command: () => openSelectedNode(),
-  },
-  {
-    label: "运行",
-    icon: "pi pi-play",
-    command: () => runSelectedNode(),
-  },
-  { separator: true },
-  {
-    label: "重命名",
-    icon: "pi pi-pencil",
-    command: () => renameSelectedNode(),
-  },
-  {
-    label: "复制",
-    icon: "pi pi-copy",
-    command: () => duplicateSelectedNode(),
-  },
-  {
-    label: "移动到...",
-    icon: "pi pi-arrow-right",
-    command: () => moveSelectedNode(),
-  },
-  { separator: true },
-  {
-    label: "导出",
-    icon: "pi pi-download",
-    command: () => exportSelectedNode(),
-  },
-  { separator: true },
-  {
-    label: "删除",
-    icon: "pi pi-trash",
-    class: "danger-item",
-    command: () => deleteSelectedNode(),
-  },
-]);
-
-let currentMenuNode: any = null;
-
-function formatDate(date?: Date): string {
+// Format
+function formatDate(date?: string): string {
   if (!date) return "";
   return new Date(date).toLocaleDateString("zh-CN", {
     month: "short",
@@ -490,72 +414,55 @@ function formatDate(date?: Date): string {
   });
 }
 
-function createWorkflow() {
-  createType.value = "workflow";
+// Create workflow
+function startCreateWorkflow(folderId: string | null) {
+  pendingFolderId.value = folderId;
   newItemName.value = "";
   newItemDescription.value = "";
-  selectedFolder.value = null;
-  selectedTemplate.value = null;
   showCreateDialog.value = true;
 }
 
-function createFolder() {
-  createType.value = "folder";
-  newItemName.value = "";
-  showCreateDialog.value = true;
-}
-
-function importWorkflow() {
-  // Trigger file input for import
-}
-
-function confirmCreate() {
+async function confirmCreate() {
   if (!newItemName.value.trim()) return;
-
-  if (createType.value === "workflow") {
-    const newWorkflow: Workflow = {
-      id: `wf-${Date.now()}`,
-      name: newItemName.value,
-      description: newItemDescription.value,
-      folderId: selectedFolder.value || undefined,
-      status: "idle",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      lastOpened: new Date(),
-      nodeCount: 0,
-    };
-    workflows.value.push(newWorkflow);
+  try {
+    const wf = await dbCreateWorkflow(
+      newItemName.value,
+      newItemDescription.value,
+      pendingFolderId.value || undefined,
+    );
+    workflows.value.push(wf);
     emit("create", {
       name: newItemName.value,
       description: newItemDescription.value,
-      folderId: selectedFolder.value || undefined,
-      template: selectedTemplate.value || undefined,
+      folderId: pendingFolderId.value || undefined,
     });
-  } else {
-    const newFolder: Folder = {
-      id: `folder-${Date.now()}`,
-      name: newItemName.value,
-      createdAt: new Date(),
-    };
-    folders.value.push(newFolder);
+    selectWorkflow(wf);
+    showCreateDialog.value = false;
+    toast.add({
+      severity: "success",
+      summary: "已创建",
+      detail: wf.name,
+      life: 2000,
+    });
+  } catch (e: any) {
+    toast.add({
+      severity: "error",
+      summary: "创建失败",
+      detail: String(e),
+      life: 6000,
+    });
   }
-
-  showCreateDialog.value = false;
 }
 
-function onNodeSelect(node: any) {
-  if (node.type === "workflow") {
-    selectWorkflow(node.data);
-  }
+// Create folder - use rename dialog with renameTarget=null to signal creation
+function startCreateFolder() {
+  renameTarget.value = null;
+  renameValue.value = "";
+  showRenameDialog.value = true;
 }
 
-function onNodeUnselect() {
-  // Handle unselect
-}
-
+// Select / Run
 function selectWorkflow(workflow: Workflow) {
-  activeWorkflowId.value = workflow.id;
-  workflow.lastOpened = new Date();
   emit("select", workflow);
 }
 
@@ -563,113 +470,97 @@ function runWorkflow(workflow: Workflow) {
   emit("run", workflow);
 }
 
-function showNodeMenu(event: Event, node: any) {
-  currentMenuNode = node;
-  nodeMenu.value.toggle(event);
+// Rename
+function startRenameWorkflow(wf: Workflow) {
+  renameTarget.value = { id: wf.id, type: "workflow" };
+  renameValue.value = wf.name;
+  showRenameDialog.value = true;
 }
 
-function openSelectedNode() {
-  if (currentMenuNode?.type === "workflow") {
-    selectWorkflow(currentMenuNode.data);
-  }
+function startRenameFolder(folder: Folder) {
+  renameTarget.value = { id: folder.id, type: "folder" };
+  renameValue.value = folder.name;
+  showRenameDialog.value = true;
 }
 
-function runSelectedNode() {
-  if (currentMenuNode?.type === "workflow") {
-    runWorkflow(currentMenuNode.data);
-  }
-}
-
-function renameSelectedNode() {
-  if (currentMenuNode) {
-    renameTarget.value = {
-      key: currentMenuNode.key,
-      type: currentMenuNode.type,
-    };
-    renameValue.value = currentMenuNode.label;
-    showRenameDialog.value = true;
-  }
-}
-
-function confirmRename() {
-  if (!renameTarget.value || !renameValue.value.trim()) return;
-
-  if (renameTarget.value.type === "workflow") {
-    const workflow = workflows.value.find(
-      w => w.id === renameTarget.value?.key,
-    );
-    if (workflow) {
-      workflow.name = renameValue.value;
-      workflow.updatedAt = new Date();
+async function confirmRename() {
+  if (!renameValue.value.trim()) return;
+  const target = renameTarget.value;
+  try {
+    if (!target) {
+      // Creating a new folder
+      const folder = await dbCreateFolder(renameValue.value);
+      folders.value.push(folder);
+      toast.add({
+        severity: "success",
+        summary: "已创建文件夹",
+        detail: folder.name,
+        life: 2000,
+      });
+    } else if (target.type === "workflow") {
+      await dbUpdateWorkflow(target.id, renameValue.value);
+      const wf = workflows.value.find(w => w.id === target.id);
+      if (wf) {
+        wf.name = renameValue.value;
+        wf.updatedAt = new Date().toISOString();
+      }
+    } else {
+      await dbRenameFolder(target.id, renameValue.value);
+      const folder = folders.value.find(f => f.id === target.id);
+      if (folder) folder.name = renameValue.value;
     }
-  } else {
-    const folder = folders.value.find(f => f.id === renameTarget.value?.key);
-    if (folder) {
-      folder.name = renameValue.value;
+    showRenameDialog.value = false;
+    renameTarget.value = null;
+  } catch (e: any) {
+    toast.add({
+      severity: "error",
+      summary: "操作失败",
+      detail: String(e),
+      life: 4000,
+    });
+  }
+}
+
+// Delete
+function confirmDeleteWorkflow(wf: Workflow) {
+  deleteTargetId.value = wf.id;
+  deleteTargetName.value = wf.name;
+  deleteTargetType.value = "workflow";
+  showDeleteDialog.value = true;
+}
+
+function confirmDeleteFolder(folder: Folder) {
+  deleteTargetId.value = folder.id;
+  deleteTargetName.value = folder.name;
+  deleteTargetType.value = "folder";
+  showDeleteDialog.value = true;
+}
+
+async function confirmDelete() {
+  if (!deleteTargetId.value) return;
+  try {
+    if (deleteTargetType.value === "workflow") {
+      await dbDeleteWorkflow(deleteTargetId.value);
+      workflows.value = workflows.value.filter(
+        w => w.id !== deleteTargetId.value,
+      );
+      emit("delete", deleteTargetId.value);
+    } else {
+      await dbDeleteFolder(deleteTargetId.value);
+      folders.value = folders.value.filter(f => f.id !== deleteTargetId.value);
+      workflows.value = workflows.value.filter(
+        w => w.folderId !== deleteTargetId.value,
+      );
     }
+    showDeleteDialog.value = false;
+  } catch (e: any) {
+    toast.add({
+      severity: "error",
+      summary: "删除失败",
+      detail: String(e),
+      life: 4000,
+    });
   }
-
-  showRenameDialog.value = false;
-  renameTarget.value = null;
-}
-
-function duplicateSelectedNode() {
-  if (currentMenuNode?.type === "workflow") {
-    const original = currentMenuNode.data as Workflow;
-    const duplicate: Workflow = {
-      ...original,
-      id: `wf-${Date.now()}`,
-      name: `${original.name} (副本)`,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      status: "idle",
-    };
-    workflows.value.push(duplicate);
-  }
-}
-
-function moveSelectedNode() {
-  // Show move dialog
-}
-
-function exportSelectedNode() {
-  // Export workflow as JSON
-}
-
-function deleteSelectedNode() {
-  if (currentMenuNode) {
-    deleteTarget.value = {
-      label: currentMenuNode.label,
-      type: currentMenuNode.type,
-      data: currentMenuNode.data,
-    };
-    showDeleteDialog.value = true;
-  }
-}
-
-function confirmDelete() {
-  if (!deleteTarget.value) return;
-
-  if (deleteTarget.value.type === "workflow") {
-    const index = workflows.value.findIndex(
-      w => w.id === (deleteTarget.value?.data as Workflow)?.id,
-    );
-    if (index > -1) {
-      workflows.value.splice(index, 1);
-    }
-  } else {
-    const folderId = (deleteTarget.value.data as Folder)?.id;
-    // Remove folder
-    const folderIndex = folders.value.findIndex(f => f.id === folderId);
-    if (folderIndex > -1) {
-      folders.value.splice(folderIndex, 1);
-    }
-    // Remove workflows in folder
-    workflows.value = workflows.value.filter(w => w.folderId !== folderId);
-  }
-
-  showDeleteDialog.value = false;
-  deleteTarget.value = null;
 }
 </script>
 
@@ -678,206 +569,281 @@ function confirmDelete() {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--surface-ground);
 }
 
 .manager-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
+  gap: 6px;
+  padding: 12px;
   border-bottom: 1px solid var(--surface-border);
 }
 
-.manager-header h3 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-color);
+.manager-header :deep(.p-button) {
+  flex-shrink: 0;
 }
 
-.header-actions {
+.search-box {
+  flex: 1;
+  min-width: 0;
   display: flex;
-  gap: 4px;
-}
-
-.search-bar {
-  padding: 12px 16px;
-}
-
-.search-bar :deep(.p-inputtext) {
-  width: 100%;
-  background: var(--surface-card);
-  border-color: var(--surface-border);
-}
-
-.workflow-stats {
-  display: flex;
-  gap: 16px;
-  padding: 8px 16px 16px;
-}
-
-.stat-item {
-  display: flex;
-  flex-direction: column;
   align-items: center;
-  flex: 1;
-  padding: 8px;
+  gap: 8px;
+  padding: 6px 12px;
   background: var(--surface-card);
-  border-radius: 6px;
   border: 1px solid var(--surface-border);
+  border-radius: 6px;
 }
 
-.stat-value {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--primary-color);
-}
-
-.stat-label {
-  font-size: 11px;
+.search-box i {
   color: var(--text-color-secondary);
-  margin-top: 2px;
+  font-size: 0.875rem;
 }
 
-.workflow-tree {
+.search-box :deep(.p-inputtext) {
   flex: 1;
-  overflow-y: auto;
-  padding: 0 8px;
-}
-
-.workflow-tree-component {
   background: transparent;
   border: none;
   padding: 0;
+  font-size: 0.8125rem;
 }
 
-.workflow-tree-component :deep(.p-tree-node) {
-  padding: 0;
+.folders-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
 }
 
-.workflow-tree-component :deep(.p-tree-node-content) {
-  padding: 4px 8px;
-  border-radius: 6px;
+.folder-group {
+  margin-bottom: 6px;
+}
+
+.folder-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
   transition: background 0.15s;
 }
 
-.workflow-tree-component :deep(.p-tree-node-content:hover) {
+.folder-header:hover {
   background: var(--surface-hover);
 }
 
-.workflow-tree-component :deep(.p-tree-node-content.p-highlight) {
-  background: var(--primary-color);
-  background-opacity: 0.1;
+.folder-chevron {
+  font-size: 0.75rem;
+  color: var(--text-color-secondary);
 }
 
-.tree-node {
+.folder-icon {
+  color: var(--primary-color);
+  font-size: 0.875rem;
+}
+
+.folder-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folder-count {
+  font-size: 0.6875rem;
+  color: var(--text-color-secondary);
+  background: var(--surface-hover);
+  padding: 1px 6px;
+  border-radius: 10px;
+  margin-right: 4px;
+}
+
+.folder-more {
+  position: relative;
+}
+
+.popup-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 100;
+  min-width: 140px;
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  padding: 4px;
+  margin-top: 4px;
+}
+
+.popup-item {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 4px 0;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-color);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: background 0.1s;
 }
 
-.tree-node.is-active {
-  color: var(--primary-color);
+.popup-item:hover {
+  background: var(--surface-hover);
 }
 
-.node-icon {
-  width: 20px;
+.popup-item i {
+  font-size: 0.8125rem;
+  width: 16px;
   text-align: center;
-  color: var(--text-color-secondary);
 }
 
-.tree-node.is-active .node-icon {
+.popup-item-danger {
+  color: var(--p-red-400);
+}
+
+.popup-item-danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* Workflow rows */
+.folder-workflows {
+  padding: 4px 0 4px 12px;
+}
+
+.workflow-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.workflow-row:hover {
+  background: var(--surface-hover);
+}
+
+.workflow-row.selected {
+  background: rgba(99, 102, 241, 0.1);
+  outline: 1px solid var(--primary-color);
+}
+
+.row-icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(99, 102, 241, 0.15);
+  border-radius: 6px;
   color: var(--primary-color);
+  font-size: 0.8125rem;
+  flex-shrink: 0;
 }
 
-.node-content {
+.row-content {
   flex: 1;
   min-width: 0;
 }
 
-.node-label {
-  font-size: 13px;
+.row-name {
+  font-size: 0.8125rem;
   font-weight: 500;
+  color: var(--text-color);
   display: block;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.node-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 2px;
-}
-
-.status-tag {
-  font-size: 10px;
-  padding: 2px 6px;
-}
-
-.node-date {
-  font-size: 11px;
+.row-date {
+  font-size: 0.6875rem;
   color: var(--text-color-secondary);
+  display: block;
+  margin-top: 1px;
 }
 
-.node-actions {
+.row-actions {
   display: flex;
   gap: 2px;
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity 0.1s;
 }
 
-.tree-node:hover .node-actions {
+.workflow-row:hover .row-actions {
   opacity: 1;
 }
 
-.dialog-content {
+.row-action-btn {
+  width: 28px;
+  height: 28px;
+}
+
+/* Empty states */
+.empty-folder {
+  padding: 12px;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-color-secondary);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  color: var(--text-color-secondary);
+  gap: 12px;
+}
+
+.empty-state i {
+  font-size: 2rem;
+  opacity: 0.5;
+}
+
+/* Dialog */
+.dialog-body {
   padding: 8px 0;
 }
 
 .form-field {
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .form-field label {
   display: block;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 500;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   color: var(--text-color);
 }
 
-.form-field :deep(.p-inputtext),
-.form-field :deep(.p-textarea),
-.form-field :deep(.p-select) {
-  width: 100%;
-}
-
-.delete-dialog .dialog-content {
+.delete-content {
   text-align: center;
 }
 
 .warning-icon {
   font-size: 48px;
   color: var(--yellow-500);
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .warning-text {
-  color: var(--red-400);
-  font-size: 13px;
-}
-
-:deep(.danger-item) {
-  color: var(--red-400) !important;
-}
-
-:deep(.danger-item .p-menuitem-icon) {
-  color: var(--red-400) !important;
+  color: var(--p-red-400);
+  font-size: 0.8125rem;
 }
 
 .w-full {

@@ -1,7 +1,13 @@
+export interface ImageFolder {
+  id: string
+  name: string
+}
+
 export interface ImageTarget {
   id: string
   name: string
   thumbnail: string
+  folderId: string
   matchThreshold: number
   lastMatch: {
     x: number
@@ -48,6 +54,23 @@ export interface DetectedRegion {
   height: number
   confidence: number
   targetName: string
+}
+
+export interface Workflow {
+  id: string
+  name: string
+  description?: string
+  folderId?: string
+  status: 'idle' | 'running' | 'paused' | 'error'
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Folder {
+  id: string
+  name: string
+  parentId?: string
+  createdAt: string
 }
 
 export interface ActionBlock {

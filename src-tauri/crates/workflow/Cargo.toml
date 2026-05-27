@@ -1,0 +1,13 @@
+[package]
+name = "workflow"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "workflow"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { version = "1", features = ["v4"] }

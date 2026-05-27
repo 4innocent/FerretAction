@@ -15,29 +15,31 @@
       <button class="toolbar-btn danger" @click="deleteSelected" title="删除选中节点">
         <i class="pi pi-trash"></i>
       </button>
+      <div class="toolbar-divider"></div>
+      <button
+        class="toolbar-btn"
+        :class="{ 'btn-disabled': !stepExecutable }"
+        :disabled="!stepExecutable"
+        @click="$emit('step-execute')"
+        title="单步执行"
+      >
+        <i class="pi pi-step-forward"></i>
+      </button>
     </div>
     <div class="canvas-wrapper" ref="graphContainer"></div>
-    <div
-      class="drop-zone"
-      :class="{ active: isDragOver }"
-    >
-      <div class="drop-indicator" v-show="isDragOver">
-        <i class="pi pi-plus-circle"></i>
-        <span>放置以添加节点</span>
-      </div>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, nextTick } from "vue";
-import { Graph, Snapline } from "@antv/x6";
+import { Graph, Snapline, Dnd, Selection } from "@antv/x6";
 import type { WorkflowNode, WorkflowEdge } from "../types";
 
 const props = defineProps<{
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   selectedNode: WorkflowNode | null;
+  stepExecutable: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -46,17 +48,19 @@ const emit = defineEmits<{
   "node-delete": [nodeId: string];
   "edge-connect": [edge: WorkflowEdge];
   "edge-delete": [edge: { source: string; target: string }];
+  "selection-change": [nodes: { id: string; type: string; config: Record<string, unknown> }[]];
+  "step-execute": [];
 }>();
 
 const containerRef = ref<HTMLElement>();
 const graphContainer = ref<HTMLElement>();
-const isDragOver = ref(false);
 const runningNodeId = ref<string | null>(null);
 
 const NODE_WIDTH = 200;
 const NODE_HEIGHT = 80;
 
 let graph: Graph;
+let dnd: Dnd;
 
 // ──────────────────────────────────────
 // Node type helpers (preserved from original)
@@ -68,12 +72,10 @@ const nodeTypeIconText: Record<string, string> = {
   loop: "↻",
   break: "⏏",
   "find-image": "⌕",
-  "wait-image": "◉",
   "image-gone": "⊘",
   "move-mouse": "⇅",
   click: "☛",
   "double-click": "⨍",
-  "right-click": "☍",
   drag: "↔",
   scroll: "↕",
   "type-text": "✎",
@@ -90,12 +92,10 @@ const nodeTypeColor: Record<string, string> = {
   loop: "#ec4899",
   break: "#ec4899",
   "find-image": "#6366f1",
-  "wait-image": "#6366f1",
   "image-gone": "#6366f1",
   "move-mouse": "#f59e0b",
   click: "#f59e0b",
   "double-click": "#f59e0b",
-  "right-click": "#f59e0b",
   drag: "#f59e0b",
   scroll: "#f59e0b",
   "type-text": "#8b5cf6",
@@ -112,12 +112,10 @@ const nodeTypeLabel: Record<string, string> = {
   loop: "循环",
   break: "跳出循环",
   "find-image": "查找图像",
-  "wait-image": "等待图像",
   "image-gone": "图像消失",
   "move-mouse": "移动鼠标",
   click: "点击",
   "double-click": "双击",
-  "right-click": "右键点击",
   drag: "拖拽",
   scroll: "滚动",
   "type-text": "输入文本",
@@ -433,12 +431,31 @@ onMounted(async () => {
     },
   });
 
+  // Enable Dnd plugin for drag-drop from palette
+  dnd = new Dnd({ target: graph });
+
   // Enable snapline guides for node alignment
   graph.use(
     new Snapline({
       enabled: true,
       sharp: true,
       tolerance: 10,
+    }),
+  );
+
+  // Enable box selection (rubberband) — only when Alt is held
+  graph.use(
+    new Selection({
+      enabled: true,
+      multiple: true,
+      rubberband: true,
+      rubberNode: true,
+      rubberEdge: false,
+      showNodeSelectionBox: true,
+      modifiers: "alt",
+      selectCellOnMoved: false,
+      selectNodeOnMoved: false,
+      selectEdgeOnMoved: false,
     }),
   );
 
@@ -592,12 +609,41 @@ onMounted(async () => {
     hideEdgeDeleteTool(edge);
   });
 
+  // Track rubberband selection for step execution
+  graph.on("selection:changed", () => {
+    const cells = graph.getSelectedCells();
+    const nodes = cells
+      .filter(c => c.isNode())
+      .map(c => {
+        const data = c.getData();
+        return {
+          id: c.id,
+          type: (data.nodeType as string) || "",
+          config: (data.nodeConfig as Record<string, unknown>) || {},
+        };
+      });
+    emit("selection-change", nodes);
+  });
+
+  // Handle Dnd-dropped nodes
+  graph.on("node:added", ({ node }) => {
+    if (isSyncing) return;
+    const data = node.getData();
+    const newNode: WorkflowNode = {
+      id: node.id as string,
+      type: (data.nodeType as string) || "unknown",
+      label: (node.attr("nodeLabel/text") as string) || "",
+      x: node.getPosition().x,
+      y: node.getPosition().y,
+      config: (data.nodeConfig as Record<string, unknown>) || {},
+    };
+    graphNodeIds.add(newNode.id);
+    emit("node-add", newNode);
+  });
+
   // Initial sync
   syncNodesToGraph();
   syncEdgesToGraph();
-
-  // Attach drop listeners
-  attachDropListeners();
 
   // Watch for props changes
   watch(
@@ -615,57 +661,6 @@ onMounted(async () => {
 // ──────────────────────────────────────
 // Drop handling (native DOM listeners for reliability)
 // ──────────────────────────────────────
-let dragCounter = 0;
-
-function attachDropListeners() {
-  const el = containerRef.value!;
-
-  el.addEventListener("dragenter", (event: DragEvent) => {
-    event.preventDefault();
-    dragCounter++;
-    isDragOver.value = true;
-  });
-
-  el.addEventListener("dragleave", () => {
-    dragCounter--;
-    if (dragCounter <= 0) {
-      dragCounter = 0;
-      isDragOver.value = false;
-    }
-  });
-
-  el.addEventListener("dragover", (event: DragEvent) => {
-    event.preventDefault();
-  });
-
-  el.addEventListener("drop", (event: DragEvent) => {
-    event.preventDefault();
-    dragCounter = 0;
-    isDragOver.value = false;
-
-    const data = event.dataTransfer?.getData("application/json");
-    if (!data) return;
-
-    const parsed = JSON.parse(data);
-    if (parsed.type !== "action-block") return;
-
-    const clientPoint = { x: event.clientX, y: event.clientY };
-    const localPoint = graph.clientToLocal(clientPoint);
-
-    const newNode: WorkflowNode = {
-      id: `${parsed.blockType}-${Date.now()}`,
-      type: parsed.blockType,
-      label: parsed.label,
-      x: localPoint.x - NODE_WIDTH / 2,
-      y: localPoint.y - NODE_HEIGHT / 2,
-      config: {},
-    };
-
-    addNodeToGraph(newNode);
-    graphNodeIds.add(newNode.id);
-    emit("node-add", newNode);
-  });
-}
 
 // ──────────────────────────────────────
 // Toolbar handlers
@@ -691,6 +686,32 @@ function deleteSelected() {
 // ──────────────────────────────────────
 // Exposed methods
 // ──────────────────────────────────────
+
+function startDnd(blockType: string, blockLabel: string, event: MouseEvent) {
+  if (!graph || !dnd) return;
+
+  const color = nodeTypeColor[blockType] || "#6366f1";
+  const icon = nodeTypeIconText[blockType] || "";
+  const typeLabel = nodeTypeLabel[blockType] || blockType;
+
+  const node = graph.createNode({
+    shape: "workflow-node",
+    width: NODE_WIDTH,
+    height: NODE_HEIGHT,
+    data: { nodeType: blockType, nodeConfig: {} },
+    attrs: {
+      header: { fill: color },
+      headerIcon: { text: icon },
+      headerLabel: { text: typeLabel },
+      nodeLabel: { text: blockLabel },
+      previewText: { text: "", display: "none" },
+    },
+    ports: getPorts(),
+  });
+
+  dnd.start(node, event);
+}
+
 defineExpose({
   setZoom(zoom: number) {
     graph?.zoomTo(zoom);
@@ -698,6 +719,7 @@ defineExpose({
   fitView() {
     graph?.zoomToFit({ padding: 20, maxScale: 1.5 });
   },
+  startDnd,
 });
 
 // ──────────────────────────────────────
@@ -758,6 +780,11 @@ onUnmounted(() => {
 .toolbar-btn.danger:hover {
   background: rgba(239, 68, 68, 0.15);
   color: #ef4444;
+}
+
+.toolbar-btn.btn-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .toolbar-divider {
