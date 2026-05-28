@@ -48,6 +48,11 @@ fn mouse_up(button: &str) -> Result<(), String> {
     keyboard::mouse_up(button).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn get_mouse_location() -> Result<(i32, i32), String> {
+    keyboard::mouse_location().map_err(|e| e.to_string())
+}
+
 // ─── 工作流命令 ──────────────────────────────────────────────
 
 #[derive(serde::Deserialize)]
@@ -89,7 +94,7 @@ fn execute_step(nodes: Vec<StepNode>) -> Result<String, String> {
             "move-mouse" => {
                 let x = node.config.get("x").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                 let y = node.config.get("y").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                keyboard::mouse_move_to(x, y).map_err(|e| e.to_string())?;
+                keyboard::mouse_move_wind(x, y).map_err(|e| e.to_string())?;
             }
             "drag" => {
                 let sx = node.config.get("startX").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
@@ -149,6 +154,8 @@ fn execute_step(nodes: Vec<StepNode>) -> Result<String, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_sql::Builder::default().build())
+        .plugin(tauri_plugin_global_shortcut::Builder::default().build())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(tauri_plugin_log::log::LevelFilter::Info)
@@ -177,6 +184,7 @@ pub fn run() {
             mouse_click,
             mouse_down,
             mouse_up,
+            get_mouse_location,
             start_drag,
             generate_id,
             execute_step,

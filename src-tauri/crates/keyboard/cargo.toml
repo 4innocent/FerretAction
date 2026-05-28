@@ -14,5 +14,10 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 enigo = { workspace = true }
 
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-graphics = "0.23"
+core-foundation = "0.9"
+
 [dev-dependencies]
 env_logger = "0.11"

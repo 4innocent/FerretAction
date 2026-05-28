@@ -1,11 +1,13 @@
 <template>
   <div class="node-config">
     <div class="config-section">
-      <label class="config-label">节点名称</label>
-      <InputText
+      <label class="config-label">备注</label>
+      <Textarea
         v-model="localConfig.label"
         @update:modelValue="updateConfig('label', $event)"
-        placeholder="输入节点名称"
+        placeholder="输入备注（可选）"
+        rows="2"
+        autoResize
       />
     </div>
 
@@ -49,7 +51,6 @@
           @update:modelValue="updateConfig('targetId', $event)"
         />
       </div>
-
     </template>
 
     <!-- Click Config -->
@@ -305,20 +306,12 @@
             />
           </div>
         </div>
-      </div>
-
-      <div class="config-section">
-        <label class="config-label">移动速度</label>
-        <div class="slider-row">
-          <Slider
-            v-model="localConfig.speed"
-            :min="0"
-            :max="100"
-            @update:modelValue="updateConfig('speed', $event)"
-          />
-          <span class="slider-value">{{ localConfig.speed || 50 }}%</span>
+        <div v-if="lastCapture" class="capture-hint" @click="fillFromCapture">
+          <i class="pi pi-copy"></i>
+          <span>上次捕获: {{ lastCapture }}</span>
         </div>
       </div>
+
     </template>
 
     <!-- Drag Config -->
@@ -400,15 +393,6 @@
         />
       </div>
 
-      <div class="config-section">
-        <label class="config-label">备注</label>
-        <Textarea
-          v-model="localConfig.notes"
-          rows="2"
-          placeholder="添加备注..."
-          @update:modelValue="updateConfig('notes', $event)"
-        />
-      </div>
     </template>
   </div>
 </template>
@@ -429,6 +413,7 @@ import type { WorkflowNode, ImageTarget } from "../types";
 const props = defineProps<{
   node: WorkflowNode;
   imageTargets: ImageTarget[];
+  lastCapture: string;
 }>();
 
 const emit = defineEmits<{
@@ -485,7 +470,6 @@ const loopTypeOptions = [
 
 const moveTypeOptions = [
   { label: "绝对坐标", value: "absolute" },
-  { label: "相对移动", value: "relative" },
   { label: "图像位置", value: "image" },
 ];
 
@@ -515,6 +499,17 @@ const updateConfig = (key: string, value: unknown) => {
   localConfig[key] = value;
   emit("update", props.node.id, { [key]: value });
 };
+
+function fillFromCapture() {
+  const m = props.lastCapture.match(/\((\d+),\s*(\d+)\)/);
+  if (m) {
+    const x = parseInt(m[1], 10);
+    const y = parseInt(m[2], 10);
+    localConfig.x = x;
+    localConfig.y = y;
+    emit("update", props.node.id, { x, y });
+  }
+}
 
 const setDuration = (ms: number) => {
   localConfig.duration = ms;
@@ -640,5 +635,25 @@ const setDuration = (ms: number) => {
 .advanced-toggle :deep(.p-button) {
   width: 100%;
   justify-content: center;
+}
+
+.capture-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--surface-hover);
+  color: var(--primary-color);
+  font-size: 0.75rem;
+  font-family: monospace;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.capture-hint:hover {
+  background: var(--primary-color);
+  color: #fff;
 }
 </style>

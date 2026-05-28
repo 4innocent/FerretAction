@@ -40,7 +40,14 @@
       "Bash(grep -n \"Other\" /Users/kang/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/enigo-0.6.1/src/keycodes.rs | head -5)",
       "Read(//Users/kang/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/enigo-0.6.1/src/**)",
       "Bash(pnpm remove *)",
-      "Bash(cargo build *)"
+      "Bash(cargo build *)",
+      "Bash(iconutil -c icns icon.iconset)",
+      "WebFetch(domain:x6.antv.antgroup.com)",
+      "Bash(find ~/.cargo/registry/src -name \"*.rs\" -path \"*/windmouse*\" 2>/dev/null | head -5)",
+      "Read(//Users/kang/.cargo/registry/src/**)",
+      "WebFetch(domain:crates.io)",
+      "Bash(cargo search *)",
+      "Bash(cargo info *)"
     ]
   }
 }

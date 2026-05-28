@@ -148,16 +148,26 @@
           <div class="settings-section">
             <h3>全局快捷键</h3>
             <div class="hotkey-list">
-              <div class="hotkey-item" v-for="hotkey in hotkeys" :key="hotkey.action">
+              <div class="hotkey-item">
                 <div class="hotkey-info">
-                  <label>{{ hotkey.label }}</label>
-                  <span>{{ hotkey.description }}</span>
+                  <label>捕获鼠标坐标</label>
+                  <span>任意时刻按下快捷键，捕获当前鼠标坐标并复制到粘贴板 (x, y)</span>
                 </div>
                 <div class="hotkey-input">
-                  <InputText :value="hotkey.keys" readonly placeholder="点击设置" @click="recordHotkey(hotkey)" />
-                  <Button icon="pi pi-times" text size="small" @click="clearHotkey(hotkey)" v-tooltip="'清除'" />
+                  <InputText
+                    :value="displayShortcut"
+                    :placeholder="recording ? '按下快捷键...' : '点击设置'"
+                    readonly
+                    :class="{ recording }"
+                    @click="startRecording"
+                    @keydown="onKeyDown"
+                    @blur="stopRecording"
+                  />
                 </div>
               </div>
+            </div>
+            <div v-if="lastCapture" class="captured-result">
+              <span>最近捕获：{{ lastCapture }}</span>
             </div>
           </div>
         </TabPanel>
@@ -203,6 +213,15 @@ import InputText from 'primevue/inputtext'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Button from 'primevue/button'
 
+const props = defineProps<{
+  shortcut: string;
+  lastCapture: string;
+}>();
+
+const emit = defineEmits<{
+  "update:shortcut": [value: string];
+}>();
+
 const activeTab = ref('general')
 
 const settings = reactive({
@@ -220,13 +239,47 @@ const settings = reactive({
   clickDelay: 50
 })
 
-const hotkeys = ref([
-  { action: 'start', label: '开始/停止执行', description: '启动或停止工作流执行', keys: 'F5' },
-  { action: 'step', label: '单步执行', description: '执行工作流的下一步', keys: 'F10' },
-  { action: 'capture', label: '捕获屏幕', description: '捕获当前屏幕截图', keys: 'Ctrl+Shift+C' },
-  { action: 'save', label: '保存', description: '保存当前工作流', keys: 'Ctrl+S' },
-  { action: 'abort', label: '紧急停止', description: '立即停止所有操作', keys: 'Escape' }
-])
+const recording = ref(false);
+const displayShortcut = ref(props.shortcut);
+
+function startRecording() {
+  recording.value = true;
+  displayShortcut.value = "";
+  window.addEventListener("keydown", onKeyDown, true);
+}
+
+function stopRecording() {
+  recording.value = false;
+  displayShortcut.value = props.shortcut;
+  window.removeEventListener("keydown", onKeyDown, true);
+}
+
+function onKeyDown(e: KeyboardEvent) {
+  if (!recording.value) return;
+  e.preventDefault();
+  e.stopPropagation();
+
+  const parts: string[] = [];
+  if (e.ctrlKey || e.metaKey) parts.push("Ctrl");
+  if (e.shiftKey) parts.push("Shift");
+  if (e.altKey) parts.push("Alt");
+
+  const key = e.key;
+  if (["Control", "Shift", "Alt", "Meta"].includes(key)) return;
+
+  const keyMap: Record<string, string> = {
+    ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right",
+    Escape: "Esc", Insert: "Ins", Delete: "Del", PageUp: "PgUp", PageDown: "PgDn",
+  };
+  const displayKey = keyMap[key] || (key.length === 1 ? key.toUpperCase() : key);
+  parts.push(displayKey);
+
+  window.removeEventListener("keydown", onKeyDown, true);
+  const newShortcut = parts.join("+");
+  displayShortcut.value = newShortcut;
+  recording.value = false;
+  emit("update:shortcut", newShortcut);
+}
 
 const themeOptions = [
   { label: '深色模式', value: 'dark' },
@@ -245,14 +298,6 @@ const logLevelOptions = [
   { label: '警告', value: 'warning' },
   { label: '错误', value: 'error' }
 ]
-
-const recordHotkey = (hotkey: { action: string }) => {
-  // Record hotkey logic
-}
-
-const clearHotkey = (hotkey: { action: string; keys: string }) => {
-  hotkey.keys = ''
-}
 </script>
 
 <style scoped>
@@ -403,6 +448,17 @@ const clearHotkey = (hotkey: { action: string; keys: string }) => {
   font-family: monospace;
   font-size: 0.75rem;
   cursor: pointer;
+}
+
+.hotkey-input :deep(.p-inputtext.recording) {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 1px var(--primary-color);
+}
+
+.captured-result {
+  margin-top: 8px;
+  font-size: 0.75rem;
+  color: var(--text-color-secondary);
 }
 
 .about-content {

@@ -116,22 +116,184 @@ pub fn key_up(key: &str) -> Result<()> {
 
 // ─── 鼠标操作 ────────────────────────────────────────────────
 
-/// 移动鼠标到屏幕绝对坐标 (x, y)。
+/// 移动鼠标到屏幕绝对坐标 (x, y)，内部走 WindMouse 拟人化轨迹。
 pub fn mouse_move_to(x: i32, y: i32) -> Result<()> {
+    mouse_move_wind(x, y)
+}
+
+/// 使用 WindMouse 算法生成拟人化鼠标移动轨迹，并沿轨迹逐点移动鼠标。
+///
+/// 最大执行时间 100ms。每步最小间隔 4ms，点数过多时自动降采样以适配时间窗口；
+/// 落后于调度时直接跳到目标，防止无限控制鼠标。
+pub fn mouse_move_wind(target_x: i32, target_y: i32) -> Result<()> {
+    const MAX_DURATION_MS: u64 = 100;
+    const MIN_STEP_INTERVAL_MS: u64 = 4;
+
+    let (start_x, start_y) = mouse_location()?;
+    let raw_points = windmouse_points(start_x as f32, start_y as f32, target_x as f32, target_y as f32);
+
+    // Downsample if needed so each step has at least MIN_STEP_INTERVAL_MS
+    let max_steps = MAX_DURATION_MS / MIN_STEP_INTERVAL_MS; // 100/4 = 25
+    let step = if raw_points.len() <= max_steps as usize {
+        1usize
+    } else {
+        (raw_points.len() + max_steps as usize - 1) / max_steps as usize
+    };
+    let points: Vec<&[i32; 3]> = raw_points
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| i % step == 0)
+        .map(|(_, p)| p)
+        .collect();
+
+    // Always include the last point (target)
+    let has_last = points.last().map_or(false, |p| p[0] == target_x && p[1] == target_y);
+    let points = if !has_last {
+        let mut pts = points;
+        pts.push(raw_points.last().unwrap());
+        pts
+    } else {
+        points
+    };
+
     let mut enigo = Enigo::new(&Settings::default()).context("初始化鼠标模拟器失败")?;
-    enigo
-        .move_mouse(x, y, Coordinate::Abs)
-        .context("鼠标移动失败")?;
+    let t0 = std::time::Instant::now();
+    let len = points.len();
+
+    for (i, point) in points.iter().enumerate() {
+        let [x, y, _wait_ms] = **point;
+
+        enigo
+            .move_mouse(x, y, Coordinate::Abs)
+            .context("鼠标移动失败")?;
+
+        if i + 1 < len {
+            let target_elapsed = std::time::Duration::from_millis(
+                MAX_DURATION_MS * (i as u64 + 1) / len as u64,
+            );
+            let elapsed = t0.elapsed();
+            if elapsed < target_elapsed {
+                std::thread::sleep(target_elapsed - elapsed);
+            } else {
+                // Behind schedule — jump to target and stop
+                enigo
+                    .move_mouse(target_x, target_y, Coordinate::Abs)
+                    .context("鼠标移动失败")?;
+                break;
+            }
+        }
+    }
+
     Ok(())
 }
 
-/// 以当前鼠标位置为原点，相对移动 (dx, dy) 像素。
+// ─── WindMouse 算法（内置实现，无外部依赖） ─────────────────────
+
+/// 简单的 LCG 伪随机数生成器，用于 WindMouse 算法。
+struct SimpleRng {
+    state: u64,
+}
+
+impl SimpleRng {
+    fn new() -> Self {
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos() as u64)
+            .unwrap_or(12345);
+        Self { state: seed }
+    }
+
+    fn next_f32(&mut self) -> f32 {
+        self.state = self.state.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+        ((self.state >> 16) & 0x7FFF) as f32 / 32768.0
+    }
+
+    fn range(&mut self, min: f32, max: f32) -> f32 {
+        min + self.next_f32() * (max - min)
+    }
+}
+
+/// 使用 WindMouse 算法生成鼠标移动轨迹点。
+///
+/// 返回 `Vec<[i32; 3]>`，每项为 `[x, y, wait_ms]`。
+fn windmouse_points(start_x: f32, start_y: f32, end_x: f32, end_y: f32) -> Vec<[i32; 3]> {
+    const GRAVITY: f32 = 9.0;
+    const WIND: f32 = 3.0;
+    const MIN_WAIT: f32 = 2.0;
+    const MAX_WAIT: f32 = 8.0;
+    const MAX_STEP: f32 = 10.0;
+    const TARGET_AREA: f32 = 100.0;
+
+    let mut rng = SimpleRng::new();
+    let mut points: Vec<[i32; 3]> = Vec::new();
+
+    let mut cx = start_x;
+    let mut cy = start_y;
+    let mut vx = 0.0f32;
+    let mut vy = 0.0f32;
+    let mut wind_x = rng.range(-WIND, WIND);
+    let mut wind_y = rng.range(-WIND, WIND);
+
+    loop {
+        let dx = end_x - cx;
+        let dy = end_y - cy;
+        let dist = (dx * dx + dy * dy).sqrt();
+        if dist < 1.0 { break; }
+
+        let w = if dist >= TARGET_AREA { dist.min(WIND) } else { WIND * (dist / TARGET_AREA) };
+
+        if dist >= TARGET_AREA {
+            vx += wind_x / dist * MAX_STEP;
+            vy += wind_y / dist * MAX_STEP;
+        }
+
+        // Gravity pulls toward target
+        vx += dx / dist * GRAVITY;
+        vy += dy / dist * GRAVITY;
+
+        // Clamp speed with randomness
+        let speed = (vx * vx + vy * vy).sqrt();
+        if speed > MAX_STEP {
+            let rd = rng.range(0.0, w.max(0.0));
+            vx = (vx / speed) * (MAX_STEP + rd);
+            vy = (vy / speed) * (MAX_STEP + rd);
+        }
+
+        cx += vx;
+        cy += vy;
+
+        let step = (vx * vx + vy * vy).sqrt();
+        let wait = (MAX_WAIT - MIN_WAIT) * (step / MAX_STEP) + MIN_WAIT;
+
+        let px = cx.round() as i32;
+        let py = cy.round() as i32;
+
+        // Deduplicate consecutive points
+        if points.last().map_or(true, |last: &[i32; 3]| last[0] != px || last[1] != py) {
+            points.push([px, py, wait as i32]);
+        }
+
+        // Occasionally refresh wind direction
+        if rng.next_f32() < 0.1 {
+            wind_x = rng.range(-WIND, WIND);
+            wind_y = rng.range(-WIND, WIND);
+        }
+    }
+
+    // Ensure exact endpoint
+    let ex = end_x.round() as i32;
+    let ey = end_y.round() as i32;
+    if points.last().map_or(true, |last: &[i32; 3]| last[0] != ex || last[1] != ey) {
+        points.push([ex, ey, 0]);
+    }
+
+    points
+}
+
+/// 以当前鼠标位置为原点，相对移动 (dx, dy) 像素，内部走 WindMouse 拟人化轨迹。
 pub fn mouse_move_relative(dx: i32, dy: i32) -> Result<()> {
-    let mut enigo = Enigo::new(&Settings::default()).context("初始化鼠标模拟器失败")?;
-    enigo
-        .move_mouse(dx, dy, Coordinate::Rel)
-        .context("鼠标相对移动失败")?;
-    Ok(())
+    let (cx, cy) = mouse_location()?;
+    mouse_move_wind(cx + dx, cy + dy)
 }
 
 /// 点击鼠标按钮（按下后立即抬起）。
@@ -168,6 +330,27 @@ pub fn mouse_up(button: &str) -> Result<()> {
         .button(btn, Direction::Release)
         .context("鼠标抬起失败")?;
     Ok(())
+}
+
+/// 获取当前鼠标坐标。返回 `(x, y)` 屏幕绝对坐标。
+pub fn mouse_location() -> Result<(i32, i32)> {
+    #[cfg(target_os = "macos")]
+    {
+        use core_graphics::event::CGEvent;
+        use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+        let src = CGEventSource::new(CGEventSourceStateID::CombinedSessionState)
+            .map_err(|()| anyhow::anyhow!("创建事件源失败"))?;
+        let event = CGEvent::new(src)
+            .map_err(|()| anyhow::anyhow!("创建事件失败"))?;
+        let loc = CGEvent::location(&event);
+        Ok((loc.x.round() as i32, loc.y.round() as i32))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let enigo = Enigo::new(&Settings::default()).context("初始化输入模拟器失败")?;
+        let (x, y) = enigo.mouse_location().map_err(|e| anyhow::anyhow!("{}", e))?;
+        Ok((x as i32, y as i32))
+    }
 }
 
 // ─── 组合键操作 ──────────────────────────────────────────────

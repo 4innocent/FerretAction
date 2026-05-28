@@ -19,6 +19,7 @@
     <NodeConfigPanel
       :node="selectedNode"
       :image-targets="imageTargets"
+      :last-capture="lastCapture"
       @update="(nodeId: string, config: Record<string, unknown>) => $emit('update-node-config', nodeId, config)"
     />
   </div>
@@ -33,6 +34,7 @@ import type { WorkflowNode, ImageTarget } from "../types";
 defineProps<{
   selectedNode: WorkflowNode | null;
   imageTargets: ImageTarget[];
+  lastCapture: string;
 }>();
 
 defineEmits<{

@@ -12,7 +12,11 @@
         <i class="pi pi-window-maximize"></i>
       </button>
       <div class="toolbar-divider"></div>
-      <button class="toolbar-btn danger" @click="deleteSelected" title="删除选中节点">
+      <button
+        class="toolbar-btn danger"
+        @click="deleteSelected"
+        title="删除选中节点"
+      >
         <i class="pi pi-trash"></i>
       </button>
       <div class="toolbar-divider"></div>
@@ -27,13 +31,18 @@
       </button>
     </div>
     <div class="canvas-wrapper" ref="graphContainer"></div>
+    <TeleportContainer />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, nextTick } from "vue";
 import { Graph, Snapline, Dnd, Selection } from "@antv/x6";
+import { register, getTeleport } from "@antv/x6-vue-shape";
+import VueNode from "./nodes/VueNode.vue";
 import type { WorkflowNode, WorkflowEdge } from "../types";
+
+const TeleportContainer = getTeleport();
 
 const props = defineProps<{
   nodes: WorkflowNode[];
@@ -45,10 +54,12 @@ const props = defineProps<{
 const emit = defineEmits<{
   "node-select": [node: WorkflowNode | null];
   "node-add": [node: WorkflowNode];
-  "node-delete": [nodeId: string];
+  "node-delete": [nodeIds: string[]];
   "edge-connect": [edge: WorkflowEdge];
   "edge-delete": [edge: { source: string; target: string }];
-  "selection-change": [nodes: { id: string; type: string; config: Record<string, unknown> }[]];
+  "selection-change": [
+    nodes: { id: string; type: string; config: Record<string, unknown> }[],
+  ];
   "step-execute": [];
 }>();
 
@@ -56,86 +67,23 @@ const containerRef = ref<HTMLElement>();
 const graphContainer = ref<HTMLElement>();
 const runningNodeId = ref<string | null>(null);
 
-const NODE_WIDTH = 200;
-const NODE_HEIGHT = 80;
+const NODE_WIDTH = 110;
+const HEADER_HEIGHT = 40;
+const NOTE_MAX_HEIGHT = 80;
 
 let graph: Graph;
 let dnd: Dnd;
 
-// ──────────────────────────────────────
-// Node type helpers (preserved from original)
-// ──────────────────────────────────────
-const nodeTypeIconText: Record<string, string> = {
-  start: "▶",
-  end: "■",
-  condition: "?",
-  loop: "↻",
-  break: "⏏",
-  "find-image": "⌕",
-  "image-gone": "⊘",
-  "move-mouse": "⇅",
-  click: "☛",
-  "double-click": "⨍",
-  drag: "↔",
-  scroll: "↕",
-  "type-text": "✎",
-  hotkey: "⚡",
-  "key-press": "◎",
-  wait: "⏳",
-  "wait-condition": "⧖",
-};
-
-const nodeTypeColor: Record<string, string> = {
-  start: "#22c55e",
-  end: "#22c55e",
-  condition: "#ec4899",
-  loop: "#ec4899",
-  break: "#ec4899",
-  "find-image": "#6366f1",
-  "image-gone": "#6366f1",
-  "move-mouse": "#f59e0b",
-  click: "#f59e0b",
-  "double-click": "#f59e0b",
-  drag: "#f59e0b",
-  scroll: "#f59e0b",
-  "type-text": "#8b5cf6",
-  hotkey: "#8b5cf6",
-  "key-press": "#8b5cf6",
-  wait: "#64748b",
-  "wait-condition": "#475569",
-};
-
-const nodeTypeLabel: Record<string, string> = {
-  start: "开始",
-  end: "结束",
-  condition: "条件判断",
-  loop: "循环",
-  break: "跳出循环",
-  "find-image": "查找图像",
-  "image-gone": "图像消失",
-  "move-mouse": "移动鼠标",
-  click: "点击",
-  "double-click": "双击",
-  drag: "拖拽",
-  scroll: "滚动",
-  "type-text": "输入文本",
-  hotkey: "快捷键",
-  "key-press": "按键",
-  wait: "等待",
-  "wait-condition": "等待条件",
-};
-
-function getNodePreview(node: WorkflowNode): string {
-  if (node.type === "type-text" && node.config.text) {
-    return `"${node.config.text}"`;
-  }
-  if (node.type === "wait" && node.config.duration) {
-    return `${node.config.duration}ms`;
-  }
-  if (node.type === "loop" && node.config.maxIterations) {
-    return `最多 ${node.config.maxIterations} 次`;
-  }
-  return "";
+// Node height helper
+function computeNodeHeight(label: string): number {
+  if (!label || !label.trim()) return HEADER_HEIGHT;
+  const lines = label.split("\n");
+  const wrappedLines = lines.reduce(
+    (acc, line) => acc + Math.max(1, Math.ceil(line.length / 22)),
+    0,
+  );
+  const contentHeight = wrappedLines * 17 + 10;
+  return HEADER_HEIGHT + Math.min(contentHeight, NOTE_MAX_HEIGHT);
 }
 
 // ──────────────────────────────────────
@@ -201,30 +149,20 @@ function hideEdgeDeleteTool(edge: any) {
 // Add / remove nodes in graph
 // ──────────────────────────────────────
 function addNodeToGraph(node: WorkflowNode) {
-  const color = nodeTypeColor[node.type] || "#6366f1";
-  const icon = nodeTypeIconText[node.type] || "";
-  const preview = getNodePreview(node);
+  const hasNote = node.label && node.label.trim() !== "";
+  const bodyHeight = hasNote ? computeNodeHeight(node.label) : HEADER_HEIGHT;
 
   graph.addNode({
     id: node.id,
-    shape: "workflow-node",
+    shape: "vue-workflow-node",
     x: node.x,
     y: node.y,
     width: NODE_WIDTH,
-    height: NODE_HEIGHT,
+    height: bodyHeight,
     data: {
       nodeType: node.type,
       nodeConfig: node.config,
-    },
-    attrs: {
-      header: { fill: color },
-      headerIcon: { text: icon },
-      headerLabel: { text: nodeTypeLabel[node.type] || node.type },
-      nodeLabel: { text: node.label },
-      previewText: {
-        text: preview,
-        display: preview ? "block" : "none",
-      },
+      label: node.label,
     },
     ports: getPorts(),
   });
@@ -241,7 +179,7 @@ function syncNodesToGraph() {
   if (isSyncing) return;
   isSyncing = true;
 
-  const newNodeIds = new Set(props.nodes.map((n) => n.id));
+  const newNodeIds = new Set(props.nodes.map(n => n.id));
 
   // Remove nodes not in props
   for (const id of graphNodeIds) {
@@ -275,9 +213,11 @@ function syncEdgesToGraph() {
   for (const id of graphEdgeIds) {
     if (!edgeMap.has(id)) {
       const [source, target] = id.split("->");
-      const edges = graph.getEdges().filter(
-        (e) => e.getSourceCellId() === source && e.getTargetCellId() === target,
-      );
+      const edges = graph
+        .getEdges()
+        .filter(
+          e => e.getSourceCellId() === source && e.getTargetCellId() === target,
+        );
       for (const edge of edges) {
         graph.removeEdge(edge.id);
       }
@@ -333,15 +273,15 @@ let previousSelectedId: string | null = null;
 
 watch(
   () => props.selectedNode,
-  (newVal) => {
+  newVal => {
     if (!graph) return;
 
-    // Selection highlight: reset previous, set new
+    // Reset previous selection
     if (previousSelectedId && previousSelectedId !== newVal?.id) {
       const oldNode = graph.getCellById(previousSelectedId);
       if (oldNode && oldNode.isNode()) {
-        oldNode.attr("body/stroke", "#2a2a3a");
-        oldNode.attr("body/strokeWidth", 1);
+        const oldData = oldNode.getData() ?? {};
+        oldNode.setData({ ...oldData, highlighted: false });
       }
     }
     previousSelectedId = newVal?.id ?? null;
@@ -349,19 +289,23 @@ watch(
     if (newVal?.id) {
       const node = graph.getCellById(newVal.id);
       if (node && node.isNode()) {
-        node.attr("body/stroke", "#6366f1");
-        node.attr("body/strokeWidth", 2);
+        const data = node.getData() ?? {};
 
-        // Sync label, type color, and preview from props when config panel edits
-        const preview = getNodePreview(newVal);
-        const color = nodeTypeColor[newVal.type] || "#6366f1";
-        node.attr("nodeLabel/text", newVal.label);
-        node.attr("header/fill", color);
-        node.attr("headerLabel/text", nodeTypeLabel[newVal.type] || newVal.type);
-        node.attr("headerIcon/text", nodeTypeIconText[newVal.type] || "");
-        node.attr("previewText/text", preview);
-        node.attr("previewText/display", preview ? "block" : "none");
-        node.setData({ nodeType: newVal.type, nodeConfig: newVal.config });
+        // Update data: type/label/config + highlight
+        node.setData({
+          ...data,
+          nodeType: newVal.type,
+          nodeConfig: newVal.config,
+          label: newVal.label,
+          highlighted: true,
+        });
+
+        // Resize based on note content
+        const hasNote = newVal.label && newVal.label.trim() !== "";
+        const bodyHeight = hasNote
+          ? computeNodeHeight(newVal.label)
+          : HEADER_HEIGHT;
+        node.resize(NODE_WIDTH, bodyHeight);
       }
     }
   },
@@ -374,21 +318,19 @@ watch(
 watch(runningNodeId, (newId, oldId) => {
   if (!graph) return;
 
-  // Reset old running node
   if (oldId) {
     const oldNode = graph.getCellById(oldId);
     if (oldNode && oldNode.isNode()) {
-      oldNode.attr("body/stroke", oldId === props.selectedNode?.id ? "#6366f1" : "#2a2a3a");
-      oldNode.attr("body/strokeWidth", oldId === props.selectedNode?.id ? 2 : 1);
+      const oldData = oldNode.getData() ?? {};
+      oldNode.setData({ ...oldData, running: false });
     }
   }
 
-  // Highlight new running node with cyan border
   if (newId) {
     const newNode = graph.getCellById(newId);
     if (newNode && newNode.isNode()) {
-      newNode.attr("body/stroke", "#22d3ee");
-      newNode.attr("body/strokeWidth", 2);
+      const newData = newNode.getData() ?? {};
+      newNode.setData({ ...newData, running: true });
     }
   }
 });
@@ -459,90 +401,12 @@ onMounted(async () => {
     }),
   );
 
-  // Register custom node shape
-  Graph.registerNode("workflow-node", {
+  // Register Vue node shape via x6-vue-shape
+  register({
+    shape: "vue-workflow-node",
     width: NODE_WIDTH,
-    height: NODE_HEIGHT,
-    markup: [
-      {
-        tagName: "rect",
-        selector: "body",
-      },
-      {
-        tagName: "rect",
-        selector: "header",
-      },
-      {
-        tagName: "text",
-        selector: "headerIcon",
-      },
-      {
-        tagName: "text",
-        selector: "headerLabel",
-      },
-      {
-        tagName: "text",
-        selector: "nodeLabel",
-      },
-      {
-        tagName: "text",
-        selector: "previewText",
-      },
-    ],
-    attrs: {
-      body: {
-        width: NODE_WIDTH,
-        height: NODE_HEIGHT,
-        fill: "#16161f",
-        stroke: "#2a2a3a",
-        strokeWidth: 1,
-        rx: 10,
-        ry: 10,
-      },
-      header: {
-        width: NODE_WIDTH,
-        height: 34,
-        fill: "#6366f1",
-        rx: 10,
-        ry: 10,
-      },
-      headerIcon: {
-        x: 12,
-        y: 22,
-        fill: "#ffffff",
-        fontSize: 13,
-        fontWeight: 600,
-        fontFamily: "monospace",
-        textAnchor: "left",
-      },
-      headerLabel: {
-        x: 32,
-        y: 22,
-        fill: "#ffffff",
-        fontSize: 11,
-        fontWeight: 600,
-        fontFamily: "sans-serif",
-        textAnchor: "left",
-      },
-      nodeLabel: {
-        x: 12,
-        y: 55,
-        fill: "#e4e4ef",
-        fontSize: 13,
-        fontWeight: 500,
-        fontFamily: "sans-serif",
-        textAnchor: "left",
-      },
-      previewText: {
-        x: 12,
-        y: 72,
-        fill: "#8888a0",
-        fontSize: 11,
-        fontFamily: "monospace",
-        textAnchor: "left",
-        display: "none",
-      },
-    },
+    height: HEADER_HEIGHT,
+    component: VueNode,
   });
 
   // ── Events ──────────────────────────
@@ -553,7 +417,7 @@ onMounted(async () => {
     emit("node-select", {
       id: node.id,
       type: data.nodeType as string,
-      label: (node.attr("nodeLabel/text") as string) || "",
+      label: (data.label as string) || "",
       x: pos.x,
       y: pos.y,
       config: (data.nodeConfig as Record<string, unknown>) || {},
@@ -593,7 +457,7 @@ onMounted(async () => {
       emit("node-select", {
         id: node.id,
         type: data.nodeType as string,
-        label: (node.attr("nodeLabel/text") as string) || "",
+        label: (data.label as string) || "",
         x: current.x,
         y: current.y,
         config: (data.nodeConfig as Record<string, unknown>) || {},
@@ -632,7 +496,7 @@ onMounted(async () => {
     const newNode: WorkflowNode = {
       id: node.id as string,
       type: (data.nodeType as string) || "unknown",
-      label: (node.attr("nodeLabel/text") as string) || "",
+      label: (data.label as string) || "",
       x: node.getPosition().x,
       y: node.getPosition().y,
       config: (data.nodeConfig as Record<string, unknown>) || {},
@@ -678,8 +542,16 @@ function fitToContent() {
 }
 
 function deleteSelected() {
-  if (props.selectedNode?.id) {
-    emit("node-delete", props.selectedNode.id);
+  const cells = graph?.getSelectedCells() ?? [];
+  const nodeIds = cells.filter(c => c.isNode()).map(c => c.id as string);
+
+  // Also include single-click selected node if not already in selection
+  if (props.selectedNode?.id && !nodeIds.includes(props.selectedNode.id)) {
+    nodeIds.push(props.selectedNode.id);
+  }
+
+  if (nodeIds.length > 0) {
+    emit("node-delete", nodeIds);
   }
 }
 
@@ -690,22 +562,11 @@ function deleteSelected() {
 function startDnd(blockType: string, blockLabel: string, event: MouseEvent) {
   if (!graph || !dnd) return;
 
-  const color = nodeTypeColor[blockType] || "#6366f1";
-  const icon = nodeTypeIconText[blockType] || "";
-  const typeLabel = nodeTypeLabel[blockType] || blockType;
-
   const node = graph.createNode({
-    shape: "workflow-node",
+    shape: "vue-workflow-node",
     width: NODE_WIDTH,
-    height: NODE_HEIGHT,
-    data: { nodeType: blockType, nodeConfig: {} },
-    attrs: {
-      header: { fill: color },
-      headerIcon: { text: icon },
-      headerLabel: { text: typeLabel },
-      nodeLabel: { text: blockLabel },
-      previewText: { text: "", display: "none" },
-    },
+    height: HEADER_HEIGHT,
+    data: { nodeType: blockType, nodeConfig: {}, label: "" },
     ports: getPorts(),
   });
 
@@ -769,7 +630,9 @@ onUnmounted(() => {
   background: transparent;
   color: #a0a0b0;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .toolbar-btn:hover {
@@ -846,7 +709,8 @@ onUnmounted(() => {
 }
 
 @keyframes x6-pulse {
-  0%, 100% {
+  0%,
+  100% {
     stroke: #22d3ee;
     stroke-width: 1;
     filter: none;
