@@ -130,9 +130,8 @@ const imageBlocks = ref<ActionBlock[]>([
 
 const mouseBlocks = ref<ActionBlock[]>([
   { type: 'move-mouse', label: '移动鼠标', icon: 'pi pi-arrows-alt', color: '#f59e0b', description: '移动鼠标到指定位置' },
-  { type: 'click', label: '点击', icon: 'pi pi-external-link', color: '#f59e0b', description: '执行鼠标点击' },
+  { type: 'click', label: '点击', icon: 'pi pi-external-link', color: '#f59e0b', description: '点击（按下后立即抬起）' },
   { type: 'double-click', label: '双击', icon: 'pi pi-clone', color: '#f59e0b', description: '执行双击操作' },
-  { type: 'drag', label: '拖拽', icon: 'pi pi-arrows-h', color: '#f59e0b', description: '拖拽操作' },
   { type: 'scroll', label: '滚动', icon: 'pi pi-sort-alt', color: '#f59e0b', description: '鼠标滚轮滚动' },
 ])
 

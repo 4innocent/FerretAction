@@ -2,7 +2,7 @@
   <div class="bottom-panel" :class="{ expanded }">
     <div class="panel-toggle" @click="expanded = !expanded">
       <i :class="expanded ? 'pi pi-chevron-down' : 'pi pi-chevron-up'"></i>
-      <span>执行日志 & 调试器</span>
+      <span>执行日志 & 插件</span>
       <span class="log-count" v-if="executionLogs.length">{{
         executionLogs.length
       }}</span>
@@ -15,22 +15,17 @@
             <i class="pi pi-list"></i>
             执行日志
           </Tab>
-          <Tab value="debugger">
-            <i class="pi pi-eye"></i>
-            屏幕识别调试
+          <Tab value="plugins">
+            <i class="pi pi-puzzle-piece"></i>
+            插件管理
           </Tab>
         </TabList>
         <TabPanels>
           <TabPanel value="logs">
             <ExecutionLogs :logs="executionLogs" @clear="clearLogs" />
           </TabPanel>
-          <TabPanel value="debugger">
-            <ScreenDebugger
-              :current-screenshot="currentScreenshot"
-              :detected-regions="detectedRegions"
-              @capture="captureScreen"
-              @test-recognition="testRecognition"
-            />
+          <TabPanel value="plugins">
+            <PluginManager />
           </TabPanel>
         </TabPanels>
       </Tabs>
@@ -40,64 +35,28 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
-import { useToast } from "primevue/usetoast";
 import Tabs from "primevue/tabs";
 import TabList from "primevue/tablist";
 import Tab from "primevue/tab";
 import TabPanels from "primevue/tabpanels";
 import TabPanel from "primevue/tabpanel";
 import ExecutionLogs from "../components/ExecutionLogs.vue";
-import ScreenDebugger from "../components/ScreenDebugger.vue";
-import type { ExecutionLog, DetectedRegion } from "../types";
+import PluginManager from "../components/PluginManager.vue";
+import type { ExecutionLog } from "../types";
 
-const toast = useToast();
+defineProps<{
+  executionLogs: ExecutionLog[];
+}>();
+
+const emit = defineEmits<{
+  clear: [];
+}>();
 
 const expanded = ref(false);
 const bottomTab = ref("logs");
-const executionLogs = ref<ExecutionLog[]>([]);
-const currentScreenshot = ref("");
-
-const detectedRegions = ref<DetectedRegion[]>([
-  {
-    id: "1",
-    x: 520,
-    y: 380,
-    width: 100,
-    height: 40,
-    confidence: 0.95,
-    targetName: "登录按钮",
-  },
-  {
-    id: "2",
-    x: 320,
-    y: 200,
-    width: 200,
-    height: 32,
-    confidence: 0.92,
-    targetName: "用户名输入框",
-  },
-]);
 
 const clearLogs = () => {
-  executionLogs.value = [];
-};
-
-const captureScreen = () => {
-  toast.add({
-    severity: "info",
-    summary: "截图",
-    detail: "正在捕获屏幕...",
-    life: 2000,
-  });
-};
-
-const testRecognition = () => {
-  toast.add({
-    severity: "info",
-    summary: "测试识别",
-    detail: "正在测试图像识别...",
-    life: 2000,
-  });
+  emit("clear");
 };
 </script>
 

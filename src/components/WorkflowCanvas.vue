@@ -346,12 +346,12 @@ onMounted(async () => {
     width: containerRef.value!.clientWidth,
     height: containerRef.value!.clientHeight,
     autoResize: true,
-    background: { color: "#0d0d12" },
+    background: { color: getComputedStyle(document.documentElement).getPropertyValue("--surface-ground").trim() || "#0a0a0f" },
     grid: {
       size: 20,
       visible: true,
       type: "dot",
-      args: { color: "#2a2a3a", thickness: 1 },
+      args: { color: getComputedStyle(document.documentElement).getPropertyValue("--surface-border").trim() || "#2a2a3a", thickness: 1 },
     },
     panning: true,
     mousewheel: {
@@ -597,7 +597,7 @@ onUnmounted(() => {
   height: 100%;
   position: relative;
   overflow: hidden;
-  background: #0d0d12;
+  background: var(--surface-ground);
 }
 
 .canvas-wrapper {
@@ -614,8 +614,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 2px;
   padding: 4px;
-  background: #16161f;
-  border: 1px solid #2a2a3a;
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
 }
 
@@ -628,7 +628,7 @@ onUnmounted(() => {
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: #a0a0b0;
+  color: var(--text-color-secondary);
   cursor: pointer;
   transition:
     background 0.15s,
@@ -636,8 +636,8 @@ onUnmounted(() => {
 }
 
 .toolbar-btn:hover {
-  background: #2a2a3a;
-  color: #e4e4ef;
+  background: var(--surface-hover);
+  color: var(--text-color);
 }
 
 .toolbar-btn.danger:hover {
@@ -690,7 +690,7 @@ onUnmounted(() => {
 /* X6 overrides - must be global (not scoped) to affect X6 SVG elements */
 
 .x6-graph {
-  background: #0d0d12;
+  background: var(--surface-ground);
 }
 
 /* Ports hidden by default, shown on node hover */

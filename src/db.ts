@@ -71,6 +71,13 @@ export async function initDb(): Promise<void> {
       FOREIGN KEY (target_node_id) REFERENCES workflow_nodes(id) ON DELETE CASCADE
     )
   `);
+
+  await database.execute(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )
+  `);
 }
 
 // ──────────────────────────────────────
@@ -219,4 +226,28 @@ function toWorkflow(row: any): Workflow {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+// ──────────────────────────────────────
+// Settings (key-value store)
+// ──────────────────────────────────────
+
+export async function loadSettings(): Promise<Record<string, string>> {
+  const database = await getDb();
+  const rows = await database.select<{ key: string; value: string }[]>(
+    "SELECT key, value FROM settings",
+  );
+  const map: Record<string, string> = {};
+  for (const row of rows) {
+    map[row.key] = row.value;
+  }
+  return map;
+}
+
+export async function saveSetting(key: string, value: string): Promise<void> {
+  const database = await getDb();
+  await database.execute(
+    "INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT(key) DO UPDATE SET value = $2",
+    [key, value],
+  );
 }

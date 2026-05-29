@@ -1,4 +1,24 @@
+/* Light theme (default) */
 :root {
+  --surface-ground: #f5f5f8;
+  --surface-section: #ffffff;
+  --surface-card: #fafafc;
+  --surface-overlay: #ffffff;
+  --surface-border: #e0e0e8;
+  --surface-hover: #eeeef4;
+  --text-color: #1a1a2e;
+  --text-color-secondary: #6b6b80;
+  --primary-color: #6366f1;
+  --primary-color-text: #ffffff;
+  --cyan-400: #0891b2;
+  --green-400: #16a34a;
+  --amber-400: #d97706;
+  --red-400: #dc2626;
+  --purple-400: #9333ea;
+}
+
+/* Dark theme */
+html.dark {
   --surface-ground: #0a0a0f;
   --surface-section: #12121a;
   --surface-card: #16161f;
@@ -7,8 +27,6 @@
   --surface-hover: #252535;
   --text-color: #e4e4ef;
   --text-color-secondary: #8888a0;
-  --primary-color: #6366f1;
-  --primary-color-text: #ffffff;
   --cyan-400: #22d3ee;
   --green-400: #4ade80;
   --amber-400: #fbbf24;

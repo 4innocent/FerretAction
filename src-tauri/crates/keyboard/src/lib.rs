@@ -118,22 +118,29 @@ pub fn key_up(key: &str) -> Result<()> {
 
 /// 移动鼠标到屏幕绝对坐标 (x, y)，内部走 WindMouse 拟人化轨迹。
 pub fn mouse_move_to(x: i32, y: i32) -> Result<()> {
-    mouse_move_wind(x, y)
+    mouse_move_wind(x, y, 100)
 }
 
 /// 使用 WindMouse 算法生成拟人化鼠标移动轨迹，并沿轨迹逐点移动鼠标。
 ///
-/// 最大执行时间 100ms。每步最小间隔 4ms，点数过多时自动降采样以适配时间窗口；
-/// 落后于调度时直接跳到目标，防止无限控制鼠标。
-pub fn mouse_move_wind(target_x: i32, target_y: i32) -> Result<()> {
-    const MAX_DURATION_MS: u64 = 100;
+/// `max_duration_ms`: 最大执行时间（ms）。0 时无延迟直接跳到目标坐标。
+pub fn mouse_move_wind(target_x: i32, target_y: i32, max_duration_ms: u64) -> Result<()> {
+    // 0 = instant jump, no trajectory
+    if max_duration_ms == 0 {
+        let mut enigo = Enigo::new(&Settings::default()).context("初始化鼠标模拟器失败")?;
+        enigo
+            .move_mouse(target_x, target_y, Coordinate::Abs)
+            .context("鼠标移动失败")?;
+        return Ok(());
+    }
+
     const MIN_STEP_INTERVAL_MS: u64 = 4;
 
     let (start_x, start_y) = mouse_location()?;
     let raw_points = windmouse_points(start_x as f32, start_y as f32, target_x as f32, target_y as f32);
 
     // Downsample if needed so each step has at least MIN_STEP_INTERVAL_MS
-    let max_steps = MAX_DURATION_MS / MIN_STEP_INTERVAL_MS; // 100/4 = 25
+    let max_steps = (max_duration_ms / MIN_STEP_INTERVAL_MS).max(1);
     let step = if raw_points.len() <= max_steps as usize {
         1usize
     } else {
@@ -169,7 +176,7 @@ pub fn mouse_move_wind(target_x: i32, target_y: i32) -> Result<()> {
 
         if i + 1 < len {
             let target_elapsed = std::time::Duration::from_millis(
-                MAX_DURATION_MS * (i as u64 + 1) / len as u64,
+                max_duration_ms * (i as u64 + 1) / len as u64,
             );
             let elapsed = t0.elapsed();
             if elapsed < target_elapsed {
@@ -185,6 +192,23 @@ pub fn mouse_move_wind(target_x: i32, target_y: i32) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// 检测 ESC 键是否处于按下状态。
+#[allow(unused)]
+pub fn is_escape_pressed() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        // CGEventSourceKeyState(kCGEventSourceStateCombinedSessionState, kVK_Escape)
+        extern "C" {
+            fn CGEventSourceKeyState(state_id: i32, keycode: u16) -> bool;
+        }
+        unsafe { CGEventSourceKeyState(0, 0x35) }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
 }
 
 // ─── WindMouse 算法（内置实现，无外部依赖） ─────────────────────
@@ -293,7 +317,7 @@ fn windmouse_points(start_x: f32, start_y: f32, end_x: f32, end_y: f32) -> Vec<[
 /// 以当前鼠标位置为原点，相对移动 (dx, dy) 像素，内部走 WindMouse 拟人化轨迹。
 pub fn mouse_move_relative(dx: i32, dy: i32) -> Result<()> {
     let (cx, cy) = mouse_location()?;
-    mouse_move_wind(cx + dx, cy + dy)
+    mouse_move_wind(cx + dx, cy + dy, 100)
 }
 
 /// 点击鼠标按钮（按下后立即抬起）。

@@ -51,7 +51,7 @@
       </main>
     </div>
 
-    <BottomPanel />
+    <BottomPanel :execution-logs="executionLogs" @clear="executionLogs = []" />
 
     <Dialog
       v-model:visible="showUnsavedDialog"
@@ -79,14 +79,26 @@
     <Dialog
       v-model:visible="showSettings"
       header="设置"
-      :style="{ width: '480px' }"
+      :style="{ width: '560px' }"
       modal
       :contentStyle="{ padding: 0, overflow: 'hidden' }"
     >
       <SettingsPanel
-        :shortcut="captureShortcut"
+        :capture-shortcut="captureShortcut"
+        :quick-execute-shortcut="quickExecuteShortcut"
         :last-capture="lastCapture"
-        @update:shortcut="onShortcutChange"
+        :theme="theme"
+        :mouse-duration="mouseDuration"
+        :step-delay="stepDelay"
+        :stop-strategy="stopStrategy"
+        :minimize-on-execute="minimizeOnExecute"
+        @update:capture-shortcut="onCaptureShortcutChange"
+        @update:quick-execute-shortcut="onQuickExecuteShortcutChange"
+        @update:theme="onThemeChange"
+        @update:mouse-duration="onMouseDurationChange"
+        @update:step-delay="onStepDelayChange"
+        @update:stop-strategy="stopStrategy = $event; saveSetting('stopStrategy', $event)"
+        @update:minimize-on-execute="minimizeOnExecute = $event; saveSetting('minimizeOnExecute', String($event))"
       />
     </Dialog>
 
@@ -120,8 +132,8 @@ import WorkflowCanvas from "./components/WorkflowCanvas.vue";
 import FloatingNodePanel from "./pages/FloatingNodePanel.vue";
 import BottomPanel from "./pages/BottomPanel.vue";
 import SettingsPanel from "./components/SettingsPanel.vue";
-import type { WorkflowNode, ImageTarget, Workflow } from "./types";
-import { getWorkflow, saveWorkflowContent } from "./db";
+import type { WorkflowNode, ImageTarget, Workflow, ExecutionLog } from "./types";
+import { getWorkflow, saveWorkflowContent, initDb, loadSettings, saveSetting } from "./db";
 
 const toast = useToast();
 
@@ -133,8 +145,67 @@ const zoomLevel = ref(1);
 const selectedNode = ref<WorkflowNode | null>(null);
 const showSettings = ref(false);
 
+// Execution logs
+const executionLogs = ref<ExecutionLog[]>([]);
+function addLog(level: ExecutionLog["level"], message: string, nodeId?: string) {
+  executionLogs.value.push({
+    id: crypto.randomUUID(),
+    timestamp: new Date(),
+    level,
+    message,
+    nodeId: nodeId ?? null,
+  });
+}
+
+// ── Mouse duration ───────────────────────────────────────────
+
+const mouseDuration = ref(Number(localStorage.getItem("ferret-mouse-duration") || 100));
+const stepDelay = ref(150);
+const stopStrategy = ref("none");
+const minimizeOnExecute = ref(true);
+
+function onStepDelayChange(ms: number) {
+  stepDelay.value = ms;
+  saveSetting("stepDelay", String(ms));
+}
+
+function onMouseDurationChange(ms: number) {
+  mouseDuration.value = ms;
+  localStorage.setItem("ferret-mouse-duration", String(ms));
+  saveSetting("mouseDuration", String(ms));
+}
+
+// ── Theme ────────────────────────────────────────────────────
+
+const theme = ref<string>(localStorage.getItem("ferret-theme") || "dark");
+
+function applyTheme(t: string) {
+  const root = document.documentElement;
+  const isDark = t === "system"
+    ? window.matchMedia("(prefers-color-scheme: dark)").matches
+    : t === "dark";
+  root.classList.toggle("dark", isDark);
+}
+
+function onThemeChange(t: string) {
+  theme.value = t;
+  localStorage.setItem("ferret-theme", t);
+  applyTheme(t);
+  saveSetting("theme", t);
+}
+
+// Watch system preference when theme is "system"
+const systemDarkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+systemDarkQuery.addEventListener("change", () => {
+  if (theme.value === "system") applyTheme("system");
+});
+
+// Apply on startup
+applyTheme(theme.value);
+
 // ── Global shortcut ──────────────────────────────────────────
 const captureShortcut = ref("Ctrl+Shift+K");
+const quickExecuteShortcut = ref("Ctrl+R");
 const lastCapture = ref("");
 const shortcutReady = ref(false);
 
@@ -166,15 +237,57 @@ async function registerShortcut(sc: string) {
   }
 }
 
-function onShortcutChange(newShortcut: string) {
+function onCaptureShortcutChange(newShortcut: string) {
   registerShortcut(newShortcut);
+  saveSetting("captureShortcut", newShortcut);
 }
 
-onMounted(() => {
+async function registerQuickExecuteShortcut(sc: string) {
+  if (!shortcutReady.value) return;
+  try {
+    try { await unregister(toRegShortcut(quickExecuteShortcut.value)); } catch (_) {}
+    await register(toRegShortcut(sc), async event => {
+      if (event.state === "Pressed" && currentWorkflowId.value) {
+        try {
+          const wf = await getWorkflow(currentWorkflowId.value);
+          await onWorkflowRun(wf.workflow);
+        } catch (e) {
+          console.error("快捷执行失败:", e);
+        }
+      }
+    });
+    quickExecuteShortcut.value = sc;
+  } catch (e) {
+    console.error("注册快捷执行快捷键失败:", e);
+  }
+}
+
+function onQuickExecuteShortcutChange(newShortcut: string) {
+  registerQuickExecuteShortcut(newShortcut);
+  saveSetting("quickExecuteShortcut", newShortcut);
+}
+
+onMounted(async () => {
+  // Ensure DB tables exist, then load persisted settings
+  await initDb();
+  try {
+    const saved = await loadSettings();
+    if (saved.theme) { theme.value = saved.theme; applyTheme(saved.theme); }
+    if (saved.mouseDuration) mouseDuration.value = Number(saved.mouseDuration);
+    if (saved.stepDelay) stepDelay.value = Number(saved.stepDelay);
+    if (saved.stopStrategy) stopStrategy.value = saved.stopStrategy;
+    if (saved.minimizeOnExecute === "false") minimizeOnExecute.value = false;
+    if (saved.captureShortcut) { captureShortcut.value = saved.captureShortcut; }
+    if (saved.quickExecuteShortcut) { quickExecuteShortcut.value = saved.quickExecuteShortcut; }
+  } catch (e) {
+    console.error("Failed to load settings:", e);
+  }
+
   // Defer shortcut registration to avoid blocking startup
   setTimeout(() => {
     shortcutReady.value = true;
     registerShortcut(captureShortcut.value);
+    registerQuickExecuteShortcut(quickExecuteShortcut.value);
   }, 2000);
 });
 
@@ -182,6 +295,7 @@ onUnmounted(() => {
   shortcutReady.value = false;
   try {
     unregister(toRegShortcut(captureShortcut.value));
+    unregister(toRegShortcut(quickExecuteShortcut.value));
   } catch (_) {}
 });
 
@@ -222,7 +336,6 @@ const ACTIONABLE_TYPES = new Set([
   "move-mouse",
   "click",
   "double-click",
-  "drag",
   "scroll",
   "type-text",
   "hotkey",
@@ -308,17 +421,25 @@ async function onStepExecute() {
     life: 2000,
   });
 
+  addLog("info", `开始单步执行: ${ordered.length} 个节点` + (iterations > 1 ? ` × ${iterations} 轮` : ""));
   try {
-    await getCurrentWindow().minimize();
-    await new Promise(r => setTimeout(r, 300));
+    if (minimizeOnExecute.value) {
+      await getCurrentWindow().minimize();
+      await new Promise(r => setTimeout(r, 300));
+    }
 
     for (let i = 0; i < iterations; i++) {
-      await invoke("execute_step", { nodes: ordered });
+      await invoke("execute_step", { nodes: ordered, mouseDuration: mouseDuration.value, stepDelay: stepDelay.value, stopStrategy: stopStrategy.value });
+      for (const n of ordered) {
+        addLog("success", `执行: ${n.type}`, n.id);
+      }
       if (i < iterations - 1) {
         await new Promise(r => setTimeout(r, 200));
       }
     }
+    addLog("success", `执行完成`);
   } catch (e: any) {
+    addLog("error", `执行失败: ${String(e)}`);
     console.error("Step execution failed:", e);
     toast.add({
       severity: "error",
@@ -379,6 +500,7 @@ const renameTarget = (id: string, name: string) => {
 const onSaveClick = async () => {
   if (!currentWorkflowId.value) return;
   await doSave();
+  addLog("success", "工作流已保存");
   toast.add({ severity: "success", summary: "已保存", life: 1500 });
 };
 
@@ -397,7 +519,9 @@ async function loadWorkflowToCanvas(workflow: Workflow) {
     workflowEdges.value = data.edges;
     isDirty.value = false;
     snapshotState();
+    addLog("info", `加载工作流: ${workflow.name} (${data.nodes.length} 节点, ${data.edges.length} 连线)`);
   } catch (e) {
+    addLog("error", `加载工作流失败: ${workflow.name}`);
     console.error("Failed to load workflow:", e);
   } finally {
     await nextTick();
@@ -460,16 +584,137 @@ function handleUnsavedCancel() {
   showUnsavedDialog.value = false;
 }
 
-const onWorkflowRun = (workflow: Workflow) => {
+async function onWorkflowRun(workflow: Workflow) {
+  // Ensure the workflow content is loaded
+  if (workflow.id !== currentWorkflowId.value) {
+    await loadWorkflowToCanvas(workflow);
+  }
+
+  // Check for start node
+  const startNode = workflowNodes.value.find(n => n.type === "start");
+  if (!startNode) {
+    toast.add({
+      severity: "warn",
+      summary: "无法执行",
+      detail: "工作流缺少开始节点",
+      life: 4000,
+    });
+    return;
+  }
+
+  // Build adjacency maps from all edges
+  const nextMap = new Map<string, string[]>();
+  const prevMap = new Map<string, string[]>();
+  for (const e of workflowEdges.value) {
+    if (!nextMap.has(e.source)) nextMap.set(e.source, []);
+    nextMap.get(e.source)!.push(e.target);
+    if (!prevMap.has(e.target)) prevMap.set(e.target, []);
+    prevMap.get(e.target)!.push(e.source);
+  }
+
+  const nodeDataMap = new Map(workflowNodes.value.map(n => [n.id, n]));
+
+  // BFS from start node to collect all actionable + loop nodes in graph order
+  const collected: { id: string; type: string; config: Record<string, unknown> }[] = [];
+  let loopNode: { id: string; type: string; config: Record<string, unknown> } | undefined;
+  const visited = new Set<string>();
+  const queue = [startNode.id];
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    if (visited.has(id)) continue;
+    visited.add(id);
+    const data = nodeDataMap.get(id);
+    if (!data) continue;
+    if (ACTIONABLE_TYPES.has(data.type)) {
+      collected.push({ id, type: data.type, config: data.config });
+    } else if (data.type === "loop") {
+      loopNode = { id: "loop", type: "loop", config: data.config };
+    }
+    for (const next of nextMap.get(id) || []) {
+      if (!visited.has(next)) queue.push(next);
+    }
+  }
+
+  if (collected.length === 0) {
+    toast.add({
+      severity: "warn",
+      summary: "无法执行",
+      detail: "工作流无可执行节点",
+      life: 4000,
+    });
+    return;
+  }
+
+  // Order by graph topology
+  const collectedIds = new Set(collected.map(n => n.id));
+  let startId = collected[0]?.id;
+  for (const node of collected) {
+    const prevs = prevMap.get(node.id) || [];
+    if (!prevs.some(p => collectedIds.has(p))) { startId = node.id; break; }
+  }
+
+  const ordered: typeof collected = [];
+  const orderedVisited = new Set<string>();
+  const orderQueue = [startId];
+  while (orderQueue.length > 0) {
+    const id = orderQueue.shift()!;
+    if (orderedVisited.has(id)) continue;
+    orderedVisited.add(id);
+    const node = collected.find(n => n.id === id);
+    if (node) ordered.push(node);
+    for (const next of nextMap.get(id) || []) {
+      if (!orderedVisited.has(next)) orderQueue.push(next);
+    }
+  }
+  for (const node of collected) {
+    if (!orderedVisited.has(node.id)) ordered.push(node);
+  }
+
+  const iterations = loopNode ? (Number(loopNode.config.maxIterations) || 3) : 1;
+
   workflowName.value = workflow.name;
   isRunning.value = true;
+  addLog("info", `开始执行工作流: ${workflow.name} (${ordered.length} 节点` + (iterations > 1 ? ` × ${iterations} 轮)` : ")"));
   toast.add({
     severity: "success",
     summary: "开始执行",
     detail: `正在运行: ${workflow.name}`,
     life: 3000,
   });
-};
+
+  try {
+    if (minimizeOnExecute.value) {
+      await getCurrentWindow().minimize();
+      await new Promise(r => setTimeout(r, 300));
+    }
+
+    for (let i = 0; i < iterations; i++) {
+      await invoke("execute_step", {
+        nodes: ordered,
+        mouseDuration: mouseDuration.value,
+        stepDelay: stepDelay.value,
+        stopStrategy: stopStrategy.value,
+      });
+      for (const n of ordered) {
+        addLog("success", `执行: ${n.type}`, n.id);
+      }
+      if (i < iterations - 1) {
+        await new Promise(r => setTimeout(r, 200));
+      }
+    }
+    addLog("success", `工作流执行完成`);
+  } catch (e: any) {
+    addLog("error", `执行失败: ${String(e)}`);
+    toast.add({
+      severity: "error",
+      summary: "执行失败",
+      detail: String(e),
+      life: 4000,
+    });
+  } finally {
+    isRunning.value = false;
+  }
+}
 
 const onWorkflowCreate = async (data: {
   name: string;
@@ -555,6 +800,8 @@ const onNodeSelect = (node: WorkflowNode | null) => {
 
 const onNodeAdd = (node: WorkflowNode) => {
   workflowNodes.value.push(node);
+  const typeLabel = node.type === "start" ? "开始" : node.type;
+  addLog("success", `添加节点: ${typeLabel}`, node.id);
 };
 
 const onNodeDelete = (nodeIds: string[]) => {
@@ -564,16 +811,19 @@ const onNodeDelete = (nodeIds: string[]) => {
     e => !idSet.has(e.source) && !idSet.has(e.target),
   );
   if (selectedNode.value?.id && idSet.has(selectedNode.value.id)) selectedNode.value = null;
+  addLog("warning", `删除 ${nodeIds.length} 个节点`, nodeIds[0]);
 };
 
 const onEdgeConnect = (edge: { source: string; target: string }) => {
   workflowEdges.value.push(edge);
+  addLog("success", `连线: ${edge.source} → ${edge.target}`, edge.source);
 };
 
 const onEdgeDelete = (edge: { source: string; target: string }) => {
   workflowEdges.value = workflowEdges.value.filter(
     e => !(e.source === edge.source && e.target === edge.target),
   );
+  addLog("warning", `断开连线: ${edge.source} → ${edge.target}`);
 };
 
 const updateNodeConfig = (nodeId: string, config: Record<string, unknown>) => {

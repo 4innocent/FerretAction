@@ -14,7 +14,6 @@
         />
       </div>
       <div class="toolbar-actions">
-        <Button icon="pi pi-download" v-tooltip="'导出日志'" text size="small" />
         <Button icon="pi pi-trash" v-tooltip="'清空日志'" text size="small" severity="danger" @click="$emit('clear')" />
       </div>
     </div>

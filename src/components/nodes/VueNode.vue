@@ -58,7 +58,6 @@ const iconMap: Record<string, string> = {
   "move-mouse": "⇅",
   click: "☛",
   "double-click": "⨍",
-  drag: "↔",
   scroll: "↕",
   "type-text": "✎",
   hotkey: "⚡",
@@ -78,7 +77,6 @@ const colorMap: Record<string, string> = {
   "move-mouse": "#f59e0b",
   click: "#f59e0b",
   "double-click": "#f59e0b",
-  drag: "#f59e0b",
   scroll: "#f59e0b",
   "type-text": "#8b5cf6",
   hotkey: "#8b5cf6",
@@ -98,7 +96,6 @@ const typeLabelMap: Record<string, string> = {
   "move-mouse": "移动鼠标",
   click: "点击",
   "double-click": "双击",
-  drag: "拖拽",
   scroll: "滚动",
   "type-text": "输入文本",
   hotkey: "快捷键",
@@ -120,8 +117,8 @@ const typeLabel = computed(
   height: 100%;
   border-radius: 10px;
   overflow: hidden;
-  background: #16161f;
-  border: 1px solid #2a2a3a;
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
   display: flex;
   flex-direction: column;
   font-family: sans-serif;

@@ -17,27 +17,28 @@
                 <label>主题</label>
                 <span>选择应用界面主题</span>
               </div>
-              <Select 
-                v-model="settings.theme"
+              <Select
+                :modelValue="theme"
                 :options="themeOptions"
                 optionLabel="label"
                 optionValue="value"
+                @update:modelValue="emit('update:theme', $event)"
               />
             </div>
-            
+
             <div class="setting-item">
               <div class="setting-info">
                 <label>语言</label>
                 <span>界面显示语言</span>
               </div>
-              <Select 
+              <Select
                 v-model="settings.language"
                 :options="languageOptions"
                 optionLabel="label"
                 optionValue="value"
               />
             </div>
-            
+
             <div class="setting-item">
               <div class="setting-info">
                 <label>自动保存</label>
@@ -45,13 +46,18 @@
               </div>
               <ToggleSwitch v-model="settings.autoSave" />
             </div>
-            
+
             <div class="setting-item">
               <div class="setting-info">
                 <label>自动保存间隔</label>
                 <span>自动保存的时间间隔（秒）</span>
               </div>
-              <InputNumber v-model="settings.autoSaveInterval" :min="10" :max="300" suffix=" 秒" />
+              <InputNumber
+                v-model="settings.autoSaveInterval"
+                :min="10"
+                :max="300"
+                suffix=" 秒"
+              />
             </div>
           </div>
 
@@ -62,20 +68,25 @@
                 <label>日志级别</label>
                 <span>显示的最低日志级别</span>
               </div>
-              <Select 
+              <Select
                 v-model="settings.logLevel"
                 :options="logLevelOptions"
                 optionLabel="label"
                 optionValue="value"
               />
             </div>
-            
+
             <div class="setting-item">
               <div class="setting-info">
                 <label>保留日志数量</label>
                 <span>最多保留的日志条目数</span>
               </div>
-              <InputNumber v-model="settings.maxLogs" :min="100" :max="10000" :step="100" />
+              <InputNumber
+                v-model="settings.maxLogs"
+                :min="100"
+                :max="10000"
+                :step="100"
+              />
             </div>
           </div>
         </TabPanel>
@@ -86,37 +97,42 @@
             <h3>执行设置</h3>
             <div class="setting-item">
               <div class="setting-info">
-                <label>执行速度</label>
-                <span>工作流执行的整体速度</span>
-              </div>
-              <div class="slider-setting">
-                <Slider v-model="settings.executionSpeed" :min="0.25" :max="2" :step="0.25" />
-                <span class="slider-value">{{ settings.executionSpeed }}x</span>
-              </div>
-            </div>
-            
-            <div class="setting-item">
-              <div class="setting-info">
                 <label>步骤延迟</label>
                 <span>每个步骤之间的默认延迟（毫秒）</span>
               </div>
-              <InputNumber v-model="settings.stepDelay" :min="0" :max="5000" :step="50" suffix=" ms" />
+              <InputNumber
+                :modelValue="stepDelay"
+                :min="0"
+                :max="5000"
+                :step="50"
+                suffix=" ms"
+                @update:modelValue="emit('update:stepDelay', $event)"
+              />
             </div>
-            
+
             <div class="setting-item">
               <div class="setting-info">
-                <label>错误重试次数</label>
-                <span>发生错误时的默认重试次数</span>
+                <label>停止策略</label>
+                <span>执行过程中如何停止工作流</span>
               </div>
-              <InputNumber v-model="settings.retryCount" :min="0" :max="10" />
+              <Select
+                :modelValue="stopStrategy"
+                :options="stopStrategyOptions"
+                optionLabel="label"
+                optionValue="value"
+                @update:modelValue="emit('update:stopStrategy', $event)"
+              />
             </div>
-            
+
             <div class="setting-item">
               <div class="setting-info">
-                <label>失败时停止</label>
-                <span>遇到错误时停止执行</span>
+                <label>执行时最小化</label>
+                <span>开始执行前自动最小化主窗口</span>
               </div>
-              <ToggleSwitch v-model="settings.stopOnError" />
+              <ToggleSwitch
+                :modelValue="minimizeOnExecute"
+                @update:modelValue="emit('update:minimizeOnExecute', $event)"
+              />
             </div>
           </div>
 
@@ -124,21 +140,16 @@
             <h3>鼠标设置</h3>
             <div class="setting-item">
               <div class="setting-info">
-                <label>鼠标移动速度</label>
-                <span>鼠标移动的默认速度</span>
+                <label>鼠标移动时长</label>
+                <span>拟人化轨迹最大时长，0 为瞬间直达</span>
               </div>
-              <div class="slider-setting">
-                <Slider v-model="settings.mouseSpeed" :min="0" :max="100" />
-                <span class="slider-value">{{ settings.mouseSpeed }}%</span>
-              </div>
-            </div>
-            
-            <div class="setting-item">
-              <div class="setting-info">
-                <label>点击延迟</label>
-                <span>点击后的默认等待时间（毫秒）</span>
-              </div>
-              <InputNumber v-model="settings.clickDelay" :min="0" :max="1000" :step="10" suffix=" ms" />
+              <Select
+                :modelValue="mouseDuration"
+                :options="durationOptions"
+                optionLabel="label"
+                optionValue="value"
+                @update:modelValue="emit('update:mouseDuration', $event)"
+              />
             </div>
           </div>
         </TabPanel>
@@ -151,23 +162,52 @@
               <div class="hotkey-item">
                 <div class="hotkey-info">
                   <label>捕获鼠标坐标</label>
-                  <span>任意时刻按下快捷键，捕获当前鼠标坐标并复制到粘贴板 (x, y)</span>
+                  <span
+                    >任意时刻按下快捷键，捕获当前鼠标坐标并复制到粘贴板 (x,
+                    y)</span
+                  >
                 </div>
                 <div class="hotkey-input">
                   <InputText
                     :value="displayShortcut"
-                    :placeholder="recording ? '按下快捷键...' : '点击设置'"
+                    :placeholder="
+                      recordingTarget === 'capture'
+                        ? '按下快捷键...'
+                        : '点击设置'
+                    "
                     readonly
-                    :class="{ recording }"
-                    @click="startRecording"
+                    :class="{ recording: recordingTarget === 'capture' }"
+                    @click="startRecording('capture')"
+                    @keydown="onKeyDown"
+                    @blur="stopRecording"
+                  />
+                </div>
+                <div v-if="lastCapture" class="captured-result">
+                  <span>最近捕获：{{ lastCapture }}</span>
+                </div>
+              </div>
+
+              <div class="hotkey-item">
+                <div class="hotkey-info">
+                  <label>快捷执行</label>
+                  <span>按下快捷键执行当前选中的工作流</span>
+                </div>
+                <div class="hotkey-input">
+                  <InputText
+                    :value="quickExecuteDisplay"
+                    :placeholder="
+                      recordingTarget === 'quickExecute'
+                        ? '按下快捷键...'
+                        : '点击设置'
+                    "
+                    readonly
+                    :class="{ recording: recordingTarget === 'quickExecute' }"
+                    @click="startRecording('quickExecute')"
                     @keydown="onKeyDown"
                     @blur="stopRecording"
                   />
                 </div>
               </div>
-            </div>
-            <div v-if="lastCapture" class="captured-result">
-              <span>最近捕获：{{ lastCapture }}</span>
             </div>
           </div>
         </TabPanel>
@@ -200,62 +240,70 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
-import Tabs from 'primevue/tabs'
-import TabList from 'primevue/tablist'
-import Tab from 'primevue/tab'
-import TabPanels from 'primevue/tabpanels'
-import TabPanel from 'primevue/tabpanel'
-import Select from 'primevue/select'
-import Slider from 'primevue/slider'
-import InputNumber from 'primevue/inputnumber'
-import InputText from 'primevue/inputtext'
-import ToggleSwitch from 'primevue/toggleswitch'
-import Button from 'primevue/button'
+import { ref, reactive } from "vue";
+import Tabs from "primevue/tabs";
+import TabList from "primevue/tablist";
+import Tab from "primevue/tab";
+import TabPanels from "primevue/tabpanels";
+import TabPanel from "primevue/tabpanel";
+import Select from "primevue/select";
+import InputNumber from "primevue/inputnumber";
+import InputText from "primevue/inputtext";
+import ToggleSwitch from "primevue/toggleswitch";
+import Button from "primevue/button";
 
 const props = defineProps<{
-  shortcut: string;
+  captureShortcut: string;
+  quickExecuteShortcut: string;
   lastCapture: string;
+  theme: string;
+  mouseDuration: number;
+  stepDelay: number;
+  stopStrategy: string;
+  minimizeOnExecute: boolean;
 }>();
 
 const emit = defineEmits<{
-  "update:shortcut": [value: string];
+  "update:captureShortcut": [value: string];
+  "update:quickExecuteShortcut": [value: string];
+  "update:theme": [value: string];
+  "update:mouseDuration": [value: number];
+  "update:stepDelay": [value: number];
+  "update:stopStrategy": [value: string];
+  "update:minimizeOnExecute": [value: boolean];
 }>();
 
-const activeTab = ref('general')
+const activeTab = ref("general");
 
 const settings = reactive({
-  theme: 'dark',
-  language: 'zh-CN',
+  language: "zh-CN",
   autoSave: true,
   autoSaveInterval: 60,
-  logLevel: 'info',
+  logLevel: "info",
   maxLogs: 1000,
-  executionSpeed: 1,
-  stepDelay: 100,
-  retryCount: 3,
-  stopOnError: true,
-  mouseSpeed: 50,
-  clickDelay: 50
-})
+});
 
-const recording = ref(false);
-const displayShortcut = ref(props.shortcut);
+const recordingTarget = ref<string | null>(null);
+const displayShortcut = ref(props.captureShortcut);
+const quickExecuteDisplay = ref(props.quickExecuteShortcut);
 
-function startRecording() {
-  recording.value = true;
-  displayShortcut.value = "";
+function startRecording(target: string) {
+  recordingTarget.value = target;
+  if (target === "capture") displayShortcut.value = "";
+  else quickExecuteDisplay.value = "";
   window.addEventListener("keydown", onKeyDown, true);
 }
 
 function stopRecording() {
-  recording.value = false;
-  displayShortcut.value = props.shortcut;
+  if (recordingTarget.value === "capture")
+    displayShortcut.value = props.captureShortcut;
+  else quickExecuteDisplay.value = props.quickExecuteShortcut;
+  recordingTarget.value = null;
   window.removeEventListener("keydown", onKeyDown, true);
 }
 
 function onKeyDown(e: KeyboardEvent) {
-  if (!recording.value) return;
+  if (!recordingTarget.value) return;
   e.preventDefault();
   e.stopPropagation();
 
@@ -268,36 +316,61 @@ function onKeyDown(e: KeyboardEvent) {
   if (["Control", "Shift", "Alt", "Meta"].includes(key)) return;
 
   const keyMap: Record<string, string> = {
-    ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right",
-    Escape: "Esc", Insert: "Ins", Delete: "Del", PageUp: "PgUp", PageDown: "PgDn",
+    ArrowUp: "Up",
+    ArrowDown: "Down",
+    ArrowLeft: "Left",
+    ArrowRight: "Right",
+    Escape: "Esc",
+    Insert: "Ins",
+    Delete: "Del",
+    PageUp: "PgUp",
+    PageDown: "PgDn",
   };
-  const displayKey = keyMap[key] || (key.length === 1 ? key.toUpperCase() : key);
+  const displayKey =
+    keyMap[key] || (key.length === 1 ? key.toUpperCase() : key);
   parts.push(displayKey);
 
   window.removeEventListener("keydown", onKeyDown, true);
   const newShortcut = parts.join("+");
-  displayShortcut.value = newShortcut;
-  recording.value = false;
-  emit("update:shortcut", newShortcut);
+  const target = recordingTarget.value;
+  if (target === "capture") {
+    displayShortcut.value = newShortcut;
+    emit("update:captureShortcut", newShortcut);
+  } else {
+    quickExecuteDisplay.value = newShortcut;
+    emit("update:quickExecuteShortcut", newShortcut);
+  }
+  recordingTarget.value = null;
 }
 
 const themeOptions = [
-  { label: '深色模式', value: 'dark' },
-  { label: '浅色模式', value: 'light' },
-  { label: '跟随系统', value: 'system' }
-]
+  { label: "深色模式", value: "dark" },
+  { label: "浅色模式", value: "light" },
+  { label: "跟随系统", value: "system" },
+];
 
 const languageOptions = [
-  { label: '简体中文', value: 'zh-CN' },
-  { label: 'English', value: 'en-US' }
-]
+  { label: "简体中文", value: "zh-CN" },
+  // { label: 'English', value: 'en-US' }
+];
 
 const logLevelOptions = [
-  { label: '调试', value: 'debug' },
-  { label: '信息', value: 'info' },
-  { label: '警告', value: 'warning' },
-  { label: '错误', value: 'error' }
-]
+  { label: "调试", value: "debug" },
+  { label: "信息", value: "info" },
+  { label: "警告", value: "warning" },
+  { label: "错误", value: "error" },
+];
+
+const durationOptions = Array.from({ length: 11 }, (_, i) => {
+  const ms = i * 50;
+  return { label: ms === 0 ? "瞬间 (0ms)" : `${ms}ms`, value: ms };
+});
+
+const stopStrategyOptions = [
+  { label: "不停止", value: "none" },
+  { label: "检测到鼠标移动时停止", value: "mouse" },
+  { label: "按下 ESC 停止", value: "esc" },
+];
 </script>
 
 <style scoped>
@@ -345,9 +418,10 @@ const logLevelOptions = [
 }
 
 .setting-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 140px;
   align-items: center;
-  justify-content: space-between;
+  gap: 12px;
   padding: 8px 0;
 }
 
@@ -359,6 +433,9 @@ const logLevelOptions = [
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex: 1;
+  min-width: 0;
+  padding-right: 16px;
 }
 
 .setting-info label {
@@ -370,29 +447,37 @@ const logLevelOptions = [
 .setting-info span {
   font-size: 0.6875rem;
   color: var(--text-color-secondary);
+  line-height: 1.35;
 }
 
 .setting-item :deep(.p-select) {
-  width: 100px;
-  flex-shrink: 0;
+  width: 100%;
 }
 
 .setting-item :deep(.p-inputnumber) {
-  width: 75px;
+  display: flex;
+  width: 100%;
+}
+
+.setting-item :deep(.p-inputnumber-suffix) {
   flex-shrink: 0;
 }
 
 .setting-item :deep(.p-inputnumber-input) {
-  padding: 6px 8px;
-  font-size: 0.8125rem;
+  flex: 1;
+  min-width: 0;
+  padding: 6px 4px;
+  font-size: 0.75rem;
+}
+
+.setting-item :deep(.p-toggleswitch) {
+  justify-self: end;
 }
 
 .slider-setting {
   display: flex;
   align-items: center;
   gap: 6px;
-  width: 120px;
-  flex-shrink: 0;
 }
 
 .slider-setting :deep(.p-slider) {
@@ -403,8 +488,9 @@ const logLevelOptions = [
   font-size: 0.6875rem;
   font-family: monospace;
   color: var(--primary-color);
-  min-width: 32px;
+  width: 32px;
   text-align: right;
+  flex-shrink: 0;
 }
 
 .hotkey-list {
@@ -413,9 +499,10 @@ const logLevelOptions = [
 }
 
 .hotkey-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 140px;
   align-items: center;
-  justify-content: space-between;
+  gap: 12px;
   padding: 8px 0;
   border-bottom: 1px solid var(--surface-border);
 }
@@ -424,6 +511,9 @@ const logLevelOptions = [
   display: flex;
   flex-direction: column;
   gap: 1px;
+  flex: 1;
+  min-width: 0;
+  padding-right: 16px;
 }
 
 .hotkey-info label {
@@ -434,6 +524,7 @@ const logLevelOptions = [
 .hotkey-info span {
   font-size: 0.6875rem;
   color: var(--text-color-secondary);
+  line-height: 1.35;
 }
 
 .hotkey-input {
@@ -443,7 +534,7 @@ const logLevelOptions = [
 }
 
 .hotkey-input :deep(.p-inputtext) {
-  width: 100px;
+  width: 100%;
   text-align: center;
   font-family: monospace;
   font-size: 0.75rem;

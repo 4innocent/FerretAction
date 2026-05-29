@@ -53,7 +53,7 @@
       </div>
     </template>
 
-    <!-- Click Config -->
+    <!-- Click / Mouse Down / Mouse Up Config -->
     <template v-if="node.type === 'click' || node.type === 'double-click'">
       <div class="config-section">
         <label class="config-label">点击类型</label>
@@ -66,37 +66,6 @@
         />
       </div>
 
-      <div class="config-section">
-        <label class="config-label">点击位置偏移</label>
-        <div class="offset-inputs">
-          <div class="offset-field">
-            <label>X</label>
-            <InputNumber
-              v-model="localConfig.offsetX"
-              :step="1"
-              @update:modelValue="updateConfig('offsetX', $event)"
-            />
-          </div>
-          <div class="offset-field">
-            <label>Y</label>
-            <InputNumber
-              v-model="localConfig.offsetY"
-              :step="1"
-              @update:modelValue="updateConfig('offsetY', $event)"
-            />
-          </div>
-        </div>
-      </div>
-
-      <div class="config-section">
-        <Checkbox
-          v-model="localConfig.moveFirst"
-          :binary="true"
-          inputId="moveFirst"
-          @update:modelValue="updateConfig('moveFirst', $event)"
-        />
-        <label for="moveFirst" class="checkbox-label">点击前移动鼠标</label>
-      </div>
     </template>
 
     <!-- Type Text Config -->
@@ -312,53 +281,41 @@
         </div>
       </div>
 
-    </template>
-
-    <!-- Drag Config -->
-    <template v-if="node.type === 'drag'">
       <div class="config-section">
-        <label class="config-label">起始位置</label>
-        <div class="offset-inputs">
-          <div class="offset-field">
-            <label>X</label>
-            <InputNumber
-              v-model="localConfig.startX"
-              :min="0"
-              @update:modelValue="updateConfig('startX', $event)"
-            />
-          </div>
-          <div class="offset-field">
-            <label>Y</label>
-            <InputNumber
-              v-model="localConfig.startY"
-              :min="0"
-              @update:modelValue="updateConfig('startY', $event)"
-            />
-          </div>
-        </div>
+        <label class="config-label">鼠标按钮</label>
+        <SelectButton
+          v-model="localConfig.button"
+          :options="buttonOptions"
+          optionLabel="label"
+          optionValue="value"
+          @update:modelValue="updateConfig('button', $event)"
+        />
       </div>
 
       <div class="config-section">
-        <label class="config-label">目标位置</label>
-        <div class="offset-inputs">
-          <div class="offset-field">
-            <label>X</label>
-            <InputNumber
-              v-model="localConfig.endX"
-              :min="0"
-              @update:modelValue="updateConfig('endX', $event)"
-            />
-          </div>
-          <div class="offset-field">
-            <label>Y</label>
-            <InputNumber
-              v-model="localConfig.endY"
-              :min="0"
-              @update:modelValue="updateConfig('endY', $event)"
-            />
-          </div>
-        </div>
+        <label class="config-label">移动前操作</label>
+        <Select
+          v-model="localConfig.preAction"
+          :options="moveActionOptions"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="无"
+          @update:modelValue="updateConfig('preAction', $event)"
+        />
       </div>
+
+      <div class="config-section">
+        <label class="config-label">移动后操作</label>
+        <Select
+          v-model="localConfig.postAction"
+          :options="moveActionOptions"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="无"
+          @update:modelValue="updateConfig('postAction', $event)"
+        />
+      </div>
+
     </template>
 
     <!-- Advanced Options -->
@@ -466,6 +423,14 @@ const loopTypeOptions = [
   { label: "固定次数", value: "count" },
   { label: "条件循环", value: "while" },
   { label: "无限循环", value: "infinite" },
+];
+
+const moveActionOptions = [
+  { label: "无", value: "none" },
+  { label: "单击", value: "click" },
+  { label: "双击", value: "double-click" },
+  { label: "按下", value: "mouse-down" },
+  { label: "松开", value: "mouse-up" },
 ];
 
 const moveTypeOptions = [
